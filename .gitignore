@@ -8,3 +8,5 @@
 .cxx
 local.properties
 /.idea/
+/tools/tessdata-trainer/output/
+

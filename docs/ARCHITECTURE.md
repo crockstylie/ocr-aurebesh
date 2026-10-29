@@ -69,7 +69,15 @@ fr.antoinehory.ocraurebesh/
 | `gradle/libs.versions.toml` | Catalogue des versions (CameraX, Accompanist, Tesseract, Room, KSP) | Actif |
 | `app/build.gradle.kts` | Configuration du module `:app` (minSdk 29, targetSdk 37, Compose, KSP, Room) | Actif |
 | `app/src/main/AndroidManifest.xml` | Déclaration permission `CAMERA`, feature camera et `MainActivity` | Actif |
+| `app/src/main/assets/tessdata/aurebesh.traineddata` | Modèle LSTM Tesseract 5 entraîné sur mesure (Regular, Bold, Condensed, quantifié 395 Ko) | Actif |
+| `tools/tessdata-trainer/Dockerfile` | Image Docker Ubuntu 24.04 + Tesseract 5 + Python pour l'entraînement du modèle | Actif |
+| `tools/tessdata-trainer/train_aurebesh.py` | Script reproductible de génération synthétique et d'entraînement LSTM Aurebesh | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/MainActivity.kt` | Activité hôte Jetpack Compose | Squelette initial |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/domain/ScanRecord.kt` | Modèle métier immuable (`@Immutable`) d'un scan Aurebesh | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/data/local/entity/ScanHistoryEntity.kt` | Entité Room `scan_history` et fonctions de mapping `toDomain()` / `toEntity()` | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/data/local/dao/ScanHistoryDao.kt` | Interface `@Dao` réactive (`Flow` + `suspend`) pour l'historique et les favoris | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/data/local/AppDatabase.kt` | Singleton `RoomDatabase` (`ocr_aurebesh.db`) | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/data/repository/ScanHistoryRepository.kt` | Repository exposant les `Flow<List<ScanRecord>>` et opérations CRUD | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/theme/Color.kt` | Palette de couleurs Material 3 | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/theme/Theme.kt` | `OCRAurebeshTheme` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/theme/Type.kt` | Typographies Material 3 | Actif |

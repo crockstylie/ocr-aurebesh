@@ -18,15 +18,15 @@ Légende : `[x]` Terminé | `[/]` En cours | `[ ]` À faire
 - [x] Validation du Use Case nominal et de l'architecture auto-adaptative (polarité/contraste automatiques)
 
 ## Phase 2 : Génération & Intégration du Modèle `aurebesh.traineddata`
-- [ ] Récupération d'une police Aurebesh libre de droits (`.ttf`/`.otf`) et préparation du corpus d'entraînement (`A-Z`, `0-9`, ponctuation)
-- [ ] Script/outillage de génération synthétique des images d'entraînement (`.tif` + `.box` / `.gt.txt`) et compilation du modèle `aurebesh.traineddata` pour Tesseract 4/5
-- [ ] Intégration du fichier généré `aurebesh.traineddata` dans `app/src/main/assets/tessdata/`
+- [x] Récupération des polices Aurebesh libres de droits (`Aurebesh.ttf`, `Aurebesh-Bold.ttf`, `Aurebesh-Condensed.ttf`) et préparation du corpus d'entraînement (`A-Z`, `0-9`)
+- [x] Script/outillage Docker (`tools/tessdata-trainer/`) de génération synthétique (500 lignes `.tif` + `.box` / `.lstmf`) et compilation du modèle `aurebesh.traineddata` quantifié (100 % de précision sur les phrases de validation)
+- [x] Intégration du fichier généré `aurebesh.traineddata` (`395 Ko`) dans `app/src/main/assets/tessdata/aurebesh.traineddata`
 
 ## Phase 3 : Persistance Locale avec Room (`data/local/` & `domain/`)
-- [ ] Création du modèle métier `ScanRecord` dans `domain/`
-- [ ] Création de l'entité Room `ScanHistoryEntity` et de ses fonctions de mapping vers `ScanRecord`
-- [ ] Création du DAO `ScanHistoryDao` (observation réactive via `Flow`, insertion, suppression, gestion des favoris)
-- [ ] Création de `AppDatabase` (`RoomDatabase`) et du `ScanHistoryRepository`
+- [x] Création du modèle métier `ScanRecord` dans `domain/`
+- [x] Création de l'entité Room `ScanHistoryEntity` et de ses fonctions de mapping vers `ScanRecord`
+- [x] Création du DAO `ScanHistoryDao` (observation réactive via `Flow`, insertion, suppression, gestion des favoris)
+- [x] Création de `AppDatabase` (`RoomDatabase`) et du `ScanHistoryRepository`
 
 ## Phase 4 : Couche OCR & Prétraitement Automatique (`ocr/`)
 - [ ] Création du gestionnaire d'assets (`TessDataManager`) pour copier `aurebesh.traineddata` vers `filesDir/tesseract/tessdata/`
