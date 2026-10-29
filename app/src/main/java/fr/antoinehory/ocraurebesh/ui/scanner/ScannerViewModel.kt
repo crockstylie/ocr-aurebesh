@@ -1,6 +1,7 @@
 package fr.antoinehory.ocraurebesh.ui.scanner
 
 import android.content.Context
+import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -9,6 +10,7 @@ import fr.antoinehory.ocraurebesh.data.local.AppDatabase
 import fr.antoinehory.ocraurebesh.data.repository.ScanHistoryRepository
 import fr.antoinehory.ocraurebesh.domain.OcrResult
 import fr.antoinehory.ocraurebesh.ocr.AurebeshOcrEngine
+import fr.antoinehory.ocraurebesh.ocr.AutoImagePreprocessor
 import fr.antoinehory.ocraurebesh.ocr.OcrRecognizer
 import fr.antoinehory.ocraurebesh.ocr.TessDataManager
 import kotlinx.coroutines.CoroutineScope
@@ -26,6 +28,9 @@ import kotlinx.coroutines.launch
 
 /**
  * ViewModel principal orchestrant le flux caméra, le moteur OCR Aurebesh et l'historique Room.
+ *
+ * Inclut un stabilisateur temporel anti-troncature et anti-clignotement ainsi qu'une passe
+ * d'analyse OCR dédiée lorsque l'utilisateur fige l'image caméra.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ScannerViewModel(
@@ -35,14 +40,18 @@ class ScannerViewModel(
 
     private val _uiState = MutableStateFlow(ScannerUiState())
     val uiState: StateFlow<ScannerUiState> = _uiState.asStateFlow()
+
     private var consecutiveEmptyFrames = 0
+    private var consecutiveShorterFrames = 0
+    private var candidateText = ""
+    private var candidateMatchCount = 0
 
     val imageAnalyzer = AurebeshImageAnalyzer(
         ocrEngine = ocrEngine,
         coroutineScope = viewModelScope,
         isPausedProvider = { _uiState.value.isPaused },
         roiFraction = _uiState.value.roiFraction,
-        onResult = ::onOcrResult,
+        onResult = { result -> onOcrResult(result, isFromFrozenCapture = false) },
     )
 
     init {
@@ -54,7 +63,24 @@ class ScannerViewModel(
         when (event) {
             ScannerUiEvent.TogglePause -> {
                 _uiState.update { state ->
-                    state.copy(isPaused = !state.isPaused)
+                    val nextPaused = !state.isPaused
+                    state.copy(
+                        isPaused = nextPaused,
+                        frozenFrameBitmap = if (nextPaused) state.frozenFrameBitmap else null,
+                    )
+                }
+            }
+
+            is ScannerUiEvent.OnFrozenFrameCaptured -> {
+                _uiState.update { state ->
+                    if (state.isPaused) {
+                        state.copy(frozenFrameBitmap = event.bitmap)
+                    } else {
+                        state
+                    }
+                }
+                if (_uiState.value.isPaused) {
+                    analyzeFrozenBitmap(event.bitmap)
                 }
             }
 
@@ -84,12 +110,17 @@ class ScannerViewModel(
             ScannerUiEvent.SaveCurrentScan -> saveCurrentScan()
 
             ScannerUiEvent.ClearCurrentScan -> {
+                consecutiveEmptyFrames = 0
+                consecutiveShorterFrames = 0
+                candidateText = ""
+                candidateMatchCount = 0
                 _uiState.update {
                     it.copy(
                         recognizedText = "",
                         confidence = 0,
                         wasAutoInverted = false,
                         isPaused = false,
+                        frozenFrameBitmap = null,
                     )
                 }
             }
@@ -123,6 +154,33 @@ class ScannerViewModel(
 
             ScannerUiEvent.DismissMessage -> {
                 _uiState.update { it.copy(statusMessage = null, errorMessage = null) }
+            }
+        }
+    }
+
+    /**
+     * Déclenche une détection OCR dédiée sur le [Bitmap] capturé au moment précis où
+     * l'utilisateur fige l'image caméra.
+     */
+    private fun analyzeFrozenBitmap(bitmap: Bitmap) {
+        if (!_uiState.value.isOcrReady || bitmap.isRecycled) return
+        viewModelScope.launch(Dispatchers.Default) {
+            val roiBitmap = runCatching {
+                AutoImagePreprocessor.cropAndRotateRoi(
+                    source = bitmap,
+                    rotationDegrees = 0,
+                    roiFraction = _uiState.value.roiFraction,
+                    viewportAspectRatio = 0f,
+                )
+            }.getOrNull() ?: return@launch
+
+            try {
+                val result = ocrEngine.recognize(roiBitmap)
+                onOcrResult(result, isFromFrozenCapture = true)
+            } finally {
+                if (roiBitmap !== bitmap && !roiBitmap.isRecycled) {
+                    roiBitmap.recycle()
+                }
             }
         }
     }
@@ -162,40 +220,138 @@ class ScannerViewModel(
         }
     }
 
-    internal fun onOcrResult(result: OcrResult) {
+    internal fun onOcrResult(
+        result: OcrResult,
+        isFromFrozenCapture: Boolean = false,
+    ) {
         when (result) {
             is OcrResult.Success -> {
                 consecutiveEmptyFrames = 0
                 _uiState.update { state ->
+                    val currentText = state.recognizedText
+                    val currentLen = currentText.count { !it.isWhitespace() }
+                    val newLen = result.text.count { !it.isWhitespace() }
+                    val currentLines = if (currentText.isEmpty()) 0 else currentText.count { it == '\n' } + 1
+                    val newLines = result.text.count { it == '\n' } + 1
+
                     if (state.isPaused) {
-                        return@update state
+                        if (!isFromFrozenCapture) {
+                            return@update state
+                        }
+                        // Résultat issu de l'analyse dédiée sur l'image figée :
+                        // met à jour si aucun texte n'était affiché ou si la capture figée est plus complète / fiable
+                        val shouldUpdateFrozen =
+                            currentText.isEmpty() ||
+                                newLines > currentLines ||
+                                newLen > currentLen ||
+                                (newLines == currentLines &&
+                                    newLen >= (currentLen * 85) / 100 &&
+                                    result.confidence >= state.confidence)
+                        return@update if (shouldUpdateFrozen) {
+                            state.copy(
+                                recognizedText = result.text,
+                                confidence = result.confidence,
+                                wasAutoInverted = result.wasInverted,
+                            )
+                        } else {
+                            state
+                        }
                     }
-                    val currentLen = state.recognizedText.count { it != ' ' }
-                    val newLen = result.text.count { it != ' ' }
-                    // Anti-clignotement : évite qu'un fragment court de faible confiance n'écrase
-                    // une phrase complète récemment reconnue avec une meilleure confiance
-                    val isWeakShortOverride =
-                        newLen <= 2 &&
-                            currentLen >= 4 &&
-                            result.confidence < state.confidence
-                    if (isWeakShortOverride) {
-                        state
-                    } else {
-                        state.copy(
+
+                    // 1. Premier texte acquis lorsque l'affichage est vide
+                    if (currentText.isEmpty()) {
+                        consecutiveShorterFrames = 0
+                        candidateText = result.text
+                        candidateMatchCount = 1
+                        return@update state.copy(
                             recognizedText = result.text,
                             confidence = result.confidence,
                             wasAutoInverted = result.wasInverted,
                         )
                     }
+
+                    // 2. Même texte exactement : rafraîchit la confiance et réinitialise les compteurs
+                    if (result.text == currentText) {
+                        consecutiveShorterFrames = 0
+                        candidateText = result.text
+                        candidateMatchCount = 1
+                        return@update state.copy(
+                            confidence = maxOf(state.confidence, result.confidence),
+                            wasAutoInverted = result.wasInverted,
+                        )
+                    }
+
+                    // 3. Anti-troncature : si un léger mouvement fait perdre des lignes ou > 15% des caractères,
+                    // on verrouille le texte complet pendant SHORTER_TEXT_HOLD_FRAMES frames consécutives
+                    val isTruncatedOrShorter =
+                        newLines < currentLines || newLen < (currentLen * 85) / 100
+                    if (isTruncatedOrShorter) {
+                        consecutiveShorterFrames++
+                        if (consecutiveShorterFrames < SHORTER_TEXT_HOLD_FRAMES) {
+                            return@update state
+                        }
+                        consecutiveShorterFrames = 0
+                        candidateText = result.text
+                        candidateMatchCount = 1
+                        return@update state.copy(
+                            recognizedText = result.text,
+                            confidence = result.confidence,
+                            wasAutoInverted = result.wasInverted,
+                        )
+                    }
+
+                    consecutiveShorterFrames = 0
+
+                    // 4. Texte plus complet (plus de lignes ou plus de caractères acquis à la mise au point) :
+                    // mise à jour immédiate pour afficher tout le paragraphe dès qu'il est net
+                    val isMoreComplete =
+                        (newLines > currentLines && newLen >= currentLen) ||
+                            (newLines == currentLines && newLen > currentLen && result.confidence >= state.confidence - 8)
+                    if (isMoreComplete) {
+                        candidateText = result.text
+                        candidateMatchCount = 1
+                        return@update state.copy(
+                            recognizedText = result.text,
+                            confidence = result.confidence,
+                            wasAutoInverted = result.wasInverted,
+                        )
+                    }
+
+                    // 5. Même gabarit (même nombre de lignes et longueur similaire) :
+                    // évite que le texte ne tremble lettre par lettre au moindre micro-mouvement
+                    if (result.text == candidateText) {
+                        candidateMatchCount++
+                    } else {
+                        candidateText = result.text
+                        candidateMatchCount = 1
+                    }
+
+                    val isSignificantlyMoreConfident = result.confidence >= state.confidence + 5
+                    val isConfirmedCandidate =
+                        candidateMatchCount >= CANDIDATE_CONFIRM_FRAMES &&
+                            result.confidence >= state.confidence - 5
+
+                    if (isSignificantlyMoreConfident || isConfirmedCandidate) {
+                        state.copy(
+                            recognizedText = result.text,
+                            confidence = result.confidence,
+                            wasAutoInverted = result.wasInverted,
+                        )
+                    } else {
+                        state
+                    }
                 }
             }
 
             OcrResult.Empty -> {
-                // Un seul frame vide est ignoré (anti-clignotement), mais à partir de 2 frames vides
-                // consécutifs (caméra pointée vers un bureau sans Aurebesh), on efface l'ancien texte
+                // Tolère plusieurs frames vides consécutifs (micro-flou de bougé) avant d'effacer
+                // le texte, tout en nettoyant l'écran si l'utilisateur vise ailleurs (~1.5s)
                 if (!_uiState.value.isPaused) {
                     consecutiveEmptyFrames++
                     if (consecutiveEmptyFrames >= EMPTY_FRAMES_TO_CLEAR) {
+                        consecutiveShorterFrames = 0
+                        candidateText = ""
+                        candidateMatchCount = 0
                         _uiState.update { state ->
                             if (state.isPaused || state.recognizedText.isEmpty()) {
                                 state
@@ -241,7 +397,9 @@ class ScannerViewModel(
     }
 
     companion object {
-        private const val EMPTY_FRAMES_TO_CLEAR = 2
+        internal const val EMPTY_FRAMES_TO_CLEAR = 8
+        internal const val SHORTER_TEXT_HOLD_FRAMES = 6
+        private const val CANDIDATE_CONFIRM_FRAMES = 2
         private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
         fun provideFactory(context: Context): ViewModelProvider.Factory {

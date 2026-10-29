@@ -19,10 +19,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Respecte les garde-fous critiques :
  * - Ferme systématiquement chaque [ImageProxy] via `use {}` pour ne jamais bloquer le pipeline CameraX.
- * - Ignore immédiatement les frames lorsque le scan est en pause, qu'une analyse OCR est déjà en cours,
+ * - Ignore immédiatement les nouvelles frames lorsque le scan est en pause, qu'une analyse OCR est déjà en cours,
  *   ou que le délai minimal ([minIntervalMs]) entre deux analyses n'est pas écoulé.
- * - Découpe exactement la région d'intérêt ([roiFraction]) alignée sur le ratio d'écran ([viewportAspectRatio]).
- * - Garantit le recyclage du [Bitmap] ROI même en cas d'annulation du [CoroutineScope] parent.
+ * - Si une analyse était déjà en cours au moment où l'utilisateur fige l'image, son résultat est tout de même
+ *   transmis afin de ne pas perdre la détection de la frame figée.
  */
 class AurebeshImageAnalyzer(
     private val ocrEngine: OcrRecognizer,
@@ -89,12 +89,8 @@ class AurebeshImageAnalyzer(
 
         val job = coroutineScope.launch {
             try {
-                if (!isPausedProvider()) {
-                    val result = ocrEngine.recognize(roiBitmap)
-                    if (!isPausedProvider()) {
-                        onResult(result)
-                    }
-                }
+                val result = ocrEngine.recognize(roiBitmap)
+                onResult(result)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

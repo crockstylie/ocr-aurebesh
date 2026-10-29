@@ -1,5 +1,6 @@
 package fr.antoinehory.ocraurebesh.ui.scanner
 
+import android.graphics.Bitmap
 import fr.antoinehory.ocraurebesh.domain.ScanRecord
 import fr.antoinehory.ocraurebesh.ocr.RoiRectFraction
 
@@ -12,6 +13,7 @@ data class ScannerUiState(
     val confidence: Int = 0,
     val wasAutoInverted: Boolean = false,
     val isPaused: Boolean = false,
+    val frozenFrameBitmap: Bitmap? = null,
     val isTorchEnabled: Boolean = false,
     val isFlashAvailable: Boolean = false,
     val isOcrReady: Boolean = false,
@@ -28,6 +30,7 @@ data class ScannerUiState(
  */
 sealed interface ScannerUiEvent {
     data object TogglePause : ScannerUiEvent
+    data class OnFrozenFrameCaptured(val bitmap: Bitmap) : ScannerUiEvent
     data object ToggleTorch : ScannerUiEvent
     data class OnFlashAvailabilityChanged(val available: Boolean) : ScannerUiEvent
     data class OnCameraError(val message: String) : ScannerUiEvent

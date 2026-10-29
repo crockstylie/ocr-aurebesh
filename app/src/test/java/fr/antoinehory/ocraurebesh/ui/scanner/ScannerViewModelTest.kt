@@ -75,7 +75,7 @@ class ScannerViewModelTest {
         viewModel.onEvent(ScannerUiEvent.TogglePause)
         assertTrue(viewModel.uiState.value.isPaused)
 
-        // Les nouveaux résultats OCR sont ignorés tant que le scan est figé
+        // Les nouveaux résultats OCR du flux caméra sont ignorés tant que le scan est figé
         viewModel.onOcrResult(
             OcrResult.Success(
                 text = "GALACTIC EMPIRE",
@@ -84,6 +84,42 @@ class ScannerViewModelTest {
             )
         )
         assertEquals("REBEL ALLIANCE", viewModel.uiState.value.recognizedText)
+
+        // En revanche, l'analyse dédiée sur la capture figée (isFromFrozenCapture = true)
+        // peut compléter ou améliorer la détection sur l'image figée
+        viewModel.onOcrResult(
+            result = OcrResult.Success(
+                text = "REBEL ALLIANCE\nSECTOR ZERO",
+                confidence = 94,
+                wasInverted = true,
+            ),
+            isFromFrozenCapture = true,
+        )
+        assertEquals("REBEL ALLIANCE\nSECTOR ZERO", viewModel.uiState.value.recognizedText)
+    }
+
+    @Test
+    fun `holds full multi-line text against transient line drops on slight camera movement`() = runTest {
+        val viewModel = createViewModel()
+
+        // 1. Acquisition progressive : 1 ligne -> 3 lignes (mise à jour immédiate quand le texte s'enrichit)
+        viewModel.onOcrResult(OcrResult.Success(text = "LINE ONE", confidence = 85, wasInverted = false))
+        assertEquals("LINE ONE", viewModel.uiState.value.recognizedText)
+
+        val fullThreeLines = "LINE ONE\nLINE TWO\nLINE THREE"
+        viewModel.onOcrResult(OcrResult.Success(text = fullThreeLines, confidence = 88, wasInverted = false))
+        assertEquals(fullThreeLines, viewModel.uiState.value.recognizedText)
+
+        // 2. Micro-mouvement : le détecteur ne voit temporairement plus que la 1re ou les 2 premières lignes
+        viewModel.onOcrResult(OcrResult.Success(text = "LINE ONE", confidence = 90, wasInverted = false))
+        assertEquals(fullThreeLines, viewModel.uiState.value.recognizedText)
+
+        viewModel.onOcrResult(OcrResult.Success(text = "LINE ONE\nLINE TWO", confidence = 89, wasInverted = false))
+        assertEquals(fullThreeLines, viewModel.uiState.value.recognizedText)
+
+        // Même un bref frame vide ne fait pas disparaître le texte complet
+        viewModel.onOcrResult(OcrResult.Empty)
+        assertEquals(fullThreeLines, viewModel.uiState.value.recognizedText)
     }
 
     @Test

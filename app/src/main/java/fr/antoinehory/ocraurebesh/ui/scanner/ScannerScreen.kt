@@ -102,7 +102,11 @@ fun ScannerRoute(
                 CameraPreview(
                     analyzer = viewModel.imageAnalyzer,
                     isPaused = uiState.isPaused,
+                    frozenFrameBitmap = uiState.frozenFrameBitmap,
                     isTorchEnabled = uiState.isTorchEnabled,
+                    onFrozenFrameCaptured = { bitmap ->
+                        viewModel.onEvent(ScannerUiEvent.OnFrozenFrameCaptured(bitmap))
+                    },
                     onFlashAvailabilityChanged = { available ->
                         viewModel.onEvent(ScannerUiEvent.OnFlashAvailabilityChanged(available))
                     },

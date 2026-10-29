@@ -15,7 +15,8 @@ import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -26,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -37,18 +39,21 @@ import java.util.concurrent.Executors
 
 /**
  * Composable affichant le flux caméra via [PreviewView] et attachant les cas d'utilisation
- * [Preview] et [ImageAnalysis] (en haute définition `1280x720`+) au [LocalLifecycleOwner].
+ * [Preview] et [ImageAnalysis] (en haute définition `1920x1080`) au [LocalLifecycleOwner].
  *
  * Gère également :
  * - Le maintien de l'écran allumé (`keepScreenOn`) tant que le scan est actif.
- * - Le gel visuel instantané de l'image caméra lorsque [isPaused] passe à `true`.
- * - La synchronisation automatique de la rotation d'écran (Portrait / Paysage).
+ * - Le gel visuel instantané de l'image caméra lorsque [isPaused] passe à `true`, avec conservation
+ *   de l'image figée ([frozenFrameBitmap] dans le ViewModel) lors des rotations d'écran
+ *   et relance immédiate d'une analyse OCR dédiée sur la capture figée.
  */
 @Composable
 fun CameraPreview(
     analyzer: AurebeshImageAnalyzer,
     isPaused: Boolean,
+    frozenFrameBitmap: Bitmap?,
     isTorchEnabled: Boolean,
+    onFrozenFrameCaptured: (Bitmap) -> Unit,
     onFlashAvailabilityChanged: (Boolean) -> Unit,
     onCameraError: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -57,6 +62,7 @@ fun CameraPreview(
     val lifecycleOwner = LocalLifecycleOwner.current
     val currentView = LocalView.current
 
+    val currentFrozenCallback by rememberUpdatedState(onFrozenFrameCaptured)
     val currentFlashCallback by rememberUpdatedState(onFlashAvailabilityChanged)
     val currentErrorCallback by rememberUpdatedState(onCameraError)
 
@@ -78,21 +84,13 @@ fun CameraPreview(
         }
     }
 
-    var frozenFrameBitmap by remember { mutableStateOf<Bitmap?>(null) }
-
-    LaunchedEffect(isPaused) {
-        if (isPaused) {
-            frozenFrameBitmap = previewView.bitmap
-        } else {
-            frozenFrameBitmap?.recycle()
-            frozenFrameBitmap = null
-        }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            frozenFrameBitmap?.recycle()
-            frozenFrameBitmap = null
+    // Lorsque l'utilisateur fige le scan, on capture le Bitmap du PreviewView s'il n'est pas déjà stocké
+    // dans le ViewModel (ce qui préserve l'image figée lors d'une rotation Portrait <-> Paysage).
+    LaunchedEffect(isPaused, frozenFrameBitmap) {
+        if (isPaused && (frozenFrameBitmap == null || frozenFrameBitmap.isRecycled)) {
+            previewView.bitmap?.let { captured ->
+                currentFrozenCallback(captured)
+            }
         }
     }
 
@@ -201,19 +199,24 @@ fun CameraPreview(
         }
     }
 
-    Box(modifier = modifier) {
+    BoxWithConstraints(modifier = modifier) {
+        val isScreenLandscape = maxWidth > maxHeight
+
         AndroidView(
             factory = { previewView },
             modifier = Modifier.fillMaxSize(),
         )
 
-        val currentFrozen = frozenFrameBitmap
-        if (isPaused && currentFrozen != null && !currentFrozen.isRecycled) {
+        if (isPaused && frozenFrameBitmap != null && !frozenFrameBitmap.isRecycled) {
+            val isBitmapLandscape = frozenFrameBitmap.width > frozenFrameBitmap.height
+            val sameOrientation = isScreenLandscape == isBitmapLandscape
             Image(
-                bitmap = currentFrozen.asImageBitmap(),
+                bitmap = frozenFrameBitmap.asImageBitmap(),
                 contentDescription = "Image caméra figée",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                contentScale = if (sameOrientation) ContentScale.Crop else ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
             )
         }
     }

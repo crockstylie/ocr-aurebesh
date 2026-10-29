@@ -14,6 +14,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,16 +25,26 @@ import fr.antoinehory.ocraurebesh.ui.theme.HudCyanDim
 import fr.antoinehory.ocraurebesh.ui.theme.HudGlassBorder
 import fr.antoinehory.ocraurebesh.ui.theme.HudSurfaceVariant
 import fr.antoinehory.ocraurebesh.ui.theme.HudTextPrimary
+import kotlinx.coroutines.delay
 
 /**
- * Hôte de notification HUD sombre et compact, destiné à être positionné en haut de l'écran
- * afin de ne jamais masquer les boutons d'action situés en bas.
+ * Hôte de notification HUD sombre et compact, positionné en haut de l'écran
+ * avec fermeture automatique garantie après 2,2 secondes (même si Android Accessibility
+ * maintient les Snackbars indéfiniment) et fermeture immédiate au tap.
  */
 @Composable
 fun HudTopSnackbarHost(
     hostState: SnackbarHostState,
     modifier: Modifier = Modifier,
 ) {
+    val currentData = hostState.currentSnackbarData
+    LaunchedEffect(currentData) {
+        if (currentData != null) {
+            delay(AUTO_DISMISS_DELAY_MS)
+            currentData.dismiss()
+        }
+    }
+
     SnackbarHost(
         hostState = hostState,
         modifier = modifier
@@ -44,13 +55,18 @@ fun HudTopSnackbarHost(
     }
 }
 
+private const val AUTO_DISMISS_DELAY_MS = 2200L
+
 @Composable
 private fun HudSnackbarCard(
     snackbarData: SnackbarData,
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable { snackbarData.dismiss() },
         shape = RoundedCornerShape(16.dp),
         color = HudSurfaceVariant.copy(alpha = 0.96f),
         border = BorderStroke(1.dp, HudGlassBorder),
@@ -59,7 +75,7 @@ private fun HudSnackbarCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {

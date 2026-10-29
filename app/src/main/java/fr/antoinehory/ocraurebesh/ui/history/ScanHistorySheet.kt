@@ -6,8 +6,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,9 +18,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -38,6 +43,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -306,61 +317,94 @@ private fun ScanHistoryItemCard(
             containerColor = HudSurfaceVariant,
         ),
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
+            // Texte sur toute la largeur de la carte (jamais tassé à gauche par les boutons)
+            Text(
+                text = record.translatedText,
+                style = MaterialTheme.typography.titleMedium,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                color = HudTextPrimary,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            // Pied de carte : date à gauche et boutons d'actions compacts à droite
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(
-                    text = record.translatedText,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = HudTextPrimary,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = formattedDate,
                     style = MaterialTheme.typography.labelSmall,
                     color = HudTextSecondary,
                 )
-            }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onEditInStudio) {
-                    Icon(
-                        imageVector = HudIcons.Edit,
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CompactHistoryActionButton(
+                        icon = HudIcons.Edit,
                         contentDescription = "Modifier dans Studio Aurebesh",
                         tint = HudCyan,
+                        onClick = onEditInStudio,
                     )
-                }
-                IconButton(onClick = onCopy) {
-                    Icon(
-                        imageVector = HudIcons.Copy,
+                    CompactHistoryActionButton(
+                        icon = HudIcons.Copy,
                         contentDescription = "Copier",
                         tint = HudCyan,
+                        onClick = onCopy,
                     )
-                }
-                IconButton(onClick = onToggleFavorite) {
-                    Icon(
-                        imageVector = if (record.isFavorite) HudIcons.StarFilled else HudIcons.StarBorder,
+                    CompactHistoryActionButton(
+                        icon = if (record.isFavorite) HudIcons.StarFilled else HudIcons.StarBorder,
                         contentDescription = "Favori",
                         tint = if (record.isFavorite) HudAmber else HudTextSecondary,
+                        onClick = onToggleFavorite,
                     )
-                }
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        imageVector = HudIcons.Delete,
+                    CompactHistoryActionButton(
+                        icon = HudIcons.Delete,
                         contentDescription = "Supprimer",
                         tint = HudTextSecondary,
+                        onClick = onDelete,
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CompactHistoryActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    tint: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(34.dp)
+            .clip(CircleShape)
+            .background(HudGlassButton, CircleShape)
+            .border(1.dp, HudSubtleBorder, CircleShape)
+            .clickable(onClick = onClick)
+            .semantics(mergeDescendants = true) {
+                this.contentDescription = contentDescription
+                role = Role.Button
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(17.dp),
+        )
     }
 }

@@ -51,7 +51,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -88,6 +87,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import fr.antoinehory.ocraurebesh.data.local.AppDatabase
+import fr.antoinehory.ocraurebesh.data.repository.ScanHistoryRepository
 import fr.antoinehory.ocraurebesh.ui.components.HudIcons
 import fr.antoinehory.ocraurebesh.ui.components.HudTopSnackbarHost
 import fr.antoinehory.ocraurebesh.ui.theme.HudAmber
@@ -95,6 +96,7 @@ import fr.antoinehory.ocraurebesh.ui.theme.HudAmberDim
 import fr.antoinehory.ocraurebesh.ui.theme.HudBackground
 import fr.antoinehory.ocraurebesh.ui.theme.HudCyan
 import fr.antoinehory.ocraurebesh.ui.theme.HudCyanDim
+import fr.antoinehory.ocraurebesh.ui.theme.HudEmerald
 import fr.antoinehory.ocraurebesh.ui.theme.HudGlassBorder
 import fr.antoinehory.ocraurebesh.ui.theme.HudGlassButton
 import fr.antoinehory.ocraurebesh.ui.theme.HudGlassSurface
@@ -176,13 +178,9 @@ fun AurebeshGeneratorScreen(
     if (lastExportedFile != null) {
         val exported = lastExportedFile!!
         LaunchedEffect(exported) {
-            val result = snackbarHostState.showSnackbar(
+            snackbarHostState.showSnackbar(
                 message = "Téléchargé : ${exported.fileName}",
-                actionLabel = "Partager",
             )
-            if (result == SnackbarResult.ActionPerformed) {
-                AurebeshImageExporter.shareExportedFile(context, exported)
-            }
             lastExportedFile = null
         }
     }
@@ -245,6 +243,29 @@ fun AurebeshGeneratorScreen(
         }
     }
 
+    val saveToHistory: () -> Unit = {
+        val textToSave = inputText.trim()
+        if (textToSave.isBlank()) {
+            errorMessage = "Écrivez un texte avant de sauvegarder"
+        } else if (!isPreview) {
+            coroutineScope.launch {
+                runCatching {
+                    val repo = ScanHistoryRepository(
+                        AppDatabase.getInstance(context.applicationContext).scanHistoryDao()
+                    )
+                    repo.saveScan(
+                        translatedText = textToSave,
+                        confidence = 100,
+                    )
+                }.onSuccess {
+                    snackbarHostState.showSnackbar("Texte enregistré dans l'historique")
+                }.onFailure { err ->
+                    errorMessage = err.localizedMessage ?: "Erreur lors de la sauvegarde"
+                }
+            }
+        }
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -267,6 +288,7 @@ fun AurebeshGeneratorScreen(
                     isExporting = isExporting,
                     onNavigateBack = onNavigateBack,
                     onToggleStyleMenu = { isStyleMenuVisible = !isStyleMenuVisible },
+                    onSaveToHistory = saveToHistory,
                     onExport = triggerExport,
                 )
 
@@ -446,6 +468,7 @@ private fun GeneratorTopBar(
     isExporting: Boolean,
     onNavigateBack: () -> Unit,
     onToggleStyleMenu: () -> Unit,
+    onSaveToHistory: () -> Unit,
     onExport: (AurebeshExportFormat) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -499,6 +522,28 @@ private fun GeneratorTopBar(
                     imageVector = HudIcons.Tune,
                     contentDescription = null,
                     tint = if (isStyleMenuVisible) HudAmber else HudTextPrimary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+
+            // Bouton Sauvegarder dans l'historique (même table que les résultats de scan)
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(HudEmerald.copy(alpha = 0.16f), CircleShape)
+                    .border(1.dp, HudEmerald.copy(alpha = 0.65f), CircleShape)
+                    .clickable(onClick = onSaveToHistory)
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = "Sauvegarder dans l'historique"
+                        role = Role.Button
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = HudIcons.BookmarkAdd,
+                    contentDescription = null,
+                    tint = HudEmerald,
                     modifier = Modifier.size(20.dp),
                 )
             }
