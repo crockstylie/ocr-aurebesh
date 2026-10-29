@@ -1,5 +1,6 @@
 package fr.antoinehory.ocraurebesh.ui.history
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -10,15 +11,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -29,11 +32,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import fr.antoinehory.ocraurebesh.domain.ScanRecord
+import fr.antoinehory.ocraurebesh.ui.components.HudIcons
+import fr.antoinehory.ocraurebesh.ui.theme.HudAmber
+import fr.antoinehory.ocraurebesh.ui.theme.HudBackground
+import fr.antoinehory.ocraurebesh.ui.theme.HudCoral
+import fr.antoinehory.ocraurebesh.ui.theme.HudCyan
+import fr.antoinehory.ocraurebesh.ui.theme.HudGlassBorder
+import fr.antoinehory.ocraurebesh.ui.theme.HudSurfaceVariant
+import fr.antoinehory.ocraurebesh.ui.theme.HudTextPrimary
+import fr.antoinehory.ocraurebesh.ui.theme.HudTextSecondary
 import java.text.DateFormat
 import java.util.Date
 
 /**
- * Volet modal (`ModalBottomSheet`) affichant l'historique local et les favoris sauvegardés dans Room.
+ * Volet modal (`ModalBottomSheet`) affichant l'historique local et les favoris sauvegardés dans Room,
+ * avec boutons d'action compacts à icônes et conservation de l'état de défilement (`rememberLazyListState`).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,6 +62,7 @@ fun ScanHistorySheet(
     modifier: Modifier = Modifier,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val listState = rememberLazyListState()
     val dateFormatter = remember {
         DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
     }
@@ -56,6 +70,8 @@ fun ScanHistorySheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        containerColor = HudBackground,
+        contentColor = HudTextPrimary,
         modifier = modifier,
     ) {
         Column(
@@ -69,18 +85,23 @@ fun ScanHistorySheet(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Historique des traductions",
+                    text = "Historique",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
+                    color = HudTextPrimary,
                 )
                 if (records.isNotEmpty() && !showFavoritesOnly) {
-                    TextButton(onClick = onClearAll) {
-                        Text("Tout effacer")
+                    IconButton(onClick = onClearAll) {
+                        Icon(
+                            imageVector = HudIcons.Delete,
+                            contentDescription = "Tout effacer",
+                            tint = HudCoral,
+                        )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -93,7 +114,14 @@ fun ScanHistorySheet(
                 FilterChip(
                     selected = showFavoritesOnly,
                     onClick = { onToggleFavoritesFilter(true) },
-                    label = { Text("Favoris ★") },
+                    label = { Text("Favoris") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = if (showFavoritesOnly) HudIcons.StarFilled else HudIcons.StarBorder,
+                            contentDescription = null,
+                            tint = if (showFavoritesOnly) HudAmber else HudTextSecondary,
+                        )
+                    },
                 )
             }
 
@@ -102,12 +130,12 @@ fun ScanHistorySheet(
             if (records.isEmpty()) {
                 Text(
                     text = if (showFavoritesOnly) {
-                        "Aucune traduction favorite pour le moment."
+                        "Aucun favori enregistré."
                     } else {
-                        "Aucune traduction enregistrée. Scannez un texte en Aurebesh puis appuyez sur Sauvegarder."
+                        "Aucune traduction enregistrée."
                     },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = HudTextSecondary,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -115,6 +143,7 @@ fun ScanHistorySheet(
                 )
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(bottom = 32.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -151,53 +180,58 @@ private fun ScanHistoryItemCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, HudGlassBorder),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            containerColor = HudSurfaceVariant,
         ),
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(start = 16.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                modifier = Modifier.weight(1f),
             ) {
                 Text(
-                    text = "${record.confidence}% confiance • $formattedDate",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = record.translatedText,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = HudTextPrimary,
                 )
-                TextButton(onClick = onToggleFavorite) {
-                    Text(
-                        text = if (record.isFavorite) "★ Favori" else "☆ Favori",
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = formattedDate,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = HudTextSecondary,
+                )
             }
 
-            Text(
-                text = record.translatedText,
-                style = MaterialTheme.typography.titleMedium,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(vertical = 4.dp),
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                OutlinedButton(
-                    onClick = onCopy,
-                    modifier = Modifier.padding(end = 8.dp),
-                ) {
-                    Text("Copier")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onCopy) {
+                    Icon(
+                        imageVector = HudIcons.Copy,
+                        contentDescription = "Copier",
+                        tint = HudCyan,
+                    )
                 }
-                TextButton(onClick = onDelete) {
-                    Text("Supprimer")
+                IconButton(onClick = onToggleFavorite) {
+                    Icon(
+                        imageVector = if (record.isFavorite) HudIcons.StarFilled else HudIcons.StarBorder,
+                        contentDescription = "Favori",
+                        tint = if (record.isFavorite) HudAmber else HudTextSecondary,
+                    )
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        imageVector = HudIcons.Delete,
+                        contentDescription = "Supprimer",
+                        tint = HudTextSecondary,
+                    )
                 }
             }
         }

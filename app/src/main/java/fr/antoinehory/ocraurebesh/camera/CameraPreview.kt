@@ -2,6 +2,7 @@ package fr.antoinehory.ocraurebesh.camera
 
 import android.graphics.Bitmap
 import android.util.Size
+import android.view.Surface
 import android.view.View
 import android.view.ViewGroup
 import androidx.camera.core.Camera
@@ -41,6 +42,7 @@ import java.util.concurrent.Executors
  * Gère également :
  * - Le maintien de l'écran allumé (`keepScreenOn`) tant que le scan est actif.
  * - Le gel visuel instantané de l'image caméra lorsque [isPaused] passe à `true`.
+ * - La synchronisation automatique de la rotation d'écran (Portrait / Paysage).
  */
 @Composable
 fun CameraPreview(
@@ -58,7 +60,6 @@ fun CameraPreview(
     val currentFlashCallback by rememberUpdatedState(onFlashAvailabilityChanged)
     val currentErrorCallback by rememberUpdatedState(onCameraError)
 
-    // Maintient l'écran allumé tant que l'utilisateur est sur le scanner
     DisposableEffect(currentView) {
         currentView.keepScreenOn = true
         onDispose {
@@ -77,7 +78,6 @@ fun CameraPreview(
         }
     }
 
-    // Capture et affiche la frame figée lorsque l'utilisateur met en pause en tapant sur l'écran
     var frozenFrameBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
     LaunchedEffect(isPaused) {
@@ -96,32 +96,30 @@ fun CameraPreview(
         }
     }
 
-    DisposableEffect(previewView, analyzer) {
+    val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
+    var boundCamera by remember { mutableStateOf<Camera?>(null) }
+
+    DisposableEffect(lifecycleOwner, analyzer, previewView) {
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+        val mainExecutor = ContextCompat.getMainExecutor(context)
+        var activeImageAnalysis: ImageAnalysis? = null
+        var activePreview: Preview? = null
+
         val layoutListener = View.OnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
             if (v.width > 0 && v.height > 0) {
                 analyzer.viewportAspectRatio = v.width.toFloat() / v.height.toFloat()
             }
+            val rotation = v.display?.rotation ?: Surface.ROTATION_0
+            activeImageAnalysis?.targetRotation = rotation
+            activePreview?.targetRotation = rotation
         }
         previewView.addOnLayoutChangeListener(layoutListener)
-        if (previewView.width > 0 && previewView.height > 0) {
-            analyzer.viewportAspectRatio = previewView.width.toFloat() / previewView.height.toFloat()
-        }
-        onDispose {
-            previewView.removeOnLayoutChangeListener(layoutListener)
-        }
-    }
-
-    val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
-    var boundCamera by remember { mutableStateOf<Camera?>(null) }
-
-    DisposableEffect(lifecycleOwner, analyzer) {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-        val mainExecutor = ContextCompat.getMainExecutor(context)
-        var activeImageAnalysis: ImageAnalysis? = null
 
         val listener = Runnable {
             try {
                 val cameraProvider = cameraProviderFuture.get()
+                val initialRotation = previewView.display?.rotation ?: Surface.ROTATION_0
+
                 val resolutionSelector = ResolutionSelector.Builder()
                     .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
                     .setResolutionStrategy(
@@ -134,23 +132,30 @@ fun CameraPreview(
 
                 val previewUseCase = Preview.Builder()
                     .setResolutionSelector(resolutionSelector)
+                    .setTargetRotation(initialRotation)
                     .build()
                     .also { it.surfaceProvider = previewView.surfaceProvider }
 
                 val imageAnalysisUseCase = ImageAnalysis.Builder()
                     .setResolutionSelector(resolutionSelector)
+                    .setTargetRotation(initialRotation)
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
                     .build()
                     .also { it.setAnalyzer(analysisExecutor, analyzer) }
 
+                activePreview = previewUseCase
                 activeImageAnalysis = imageAnalysisUseCase
-                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
+                if (previewView.width > 0 && previewView.height > 0) {
+                    analyzer.viewportAspectRatio =
+                        previewView.width.toFloat() / previewView.height.toFloat()
+                }
 
                 cameraProvider.unbindAll()
                 val camera = cameraProvider.bindToLifecycle(
                     lifecycleOwner,
-                    cameraSelector,
+                    CameraSelector.DEFAULT_BACK_CAMERA,
                     previewUseCase,
                     imageAnalysisUseCase,
                 )
@@ -170,9 +175,11 @@ fun CameraPreview(
         cameraProviderFuture.addListener(listener, mainExecutor)
 
         onDispose {
+            previewView.removeOnLayoutChangeListener(layoutListener)
             boundCamera = null
             activeImageAnalysis?.clearAnalyzer()
             activeImageAnalysis = null
+            activePreview = null
             if (cameraProviderFuture.isDone) {
                 runCatching {
                     cameraProviderFuture.get().unbindAll()

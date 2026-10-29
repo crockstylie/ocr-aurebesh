@@ -81,10 +81,11 @@ fr.antoinehory.ocraurebesh/
 | `app/src/main/java/fr/antoinehory/ocraurebesh/camera/AurebeshImageAnalyzer.kt` | `ImageAnalysis.Analyzer` extrayant le ROI avec fermeture garantie de l'`ImageProxy` (`use {}`) et recyclage `Bitmap` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/camera/CameraPreview.kt` | Composable CameraX (`PreviewView` + `ImageAnalysis` `STRATEGY_KEEP_ONLY_LATEST` + Torche) | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/CameraPermissionGate.kt` | Garde-barrière Accompanist Permissions (`CAMERA`) avec gestion rationale et refus permanent | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/HudIcons.kt` | Icônes vectorielles légères pour les contrôles HUD (Flash, Historique, Pause/Play, Copier, Favori, Supprimer) | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/ScannerOverlay.kt` | Overlay du viseur HUD dessiné avec `Modifier.drawWithCache` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerUiState.kt` | `ScannerUiState` et `ScannerUiEvent` (pattern UDF) | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerViewModel.kt` | `ViewModel` orchestrant l'OCR, la caméra et l'historique Room | Actif |
-| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerScreen.kt` | `ScannerRoute` et `ScannerScreen` Edge-to-Edge avec carte de traduction et `@Preview` | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerScreen.kt` | `ScannerRoute` et `ScannerScreen` Edge-to-Edge adaptatif (Portrait + Paysage) avec boutons HUD à icônes | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/history/ScanHistorySheet.kt` | `ModalBottomSheet` d'historique et favoris avec `LazyColumn` optimisée (`key` + `contentType`) | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/data/local/entity/ScanHistoryEntity.kt` | Entité Room `scan_history` et fonctions de mapping `toDomain()` / `toEntity()` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/data/local/dao/ScanHistoryDao.kt` | Interface `@Dao` réactive (`Flow` + `suspend`) pour l'historique et les favoris | Actif |

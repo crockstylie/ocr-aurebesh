@@ -6,53 +6,43 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.dp
-import fr.antoinehory.ocraurebesh.ocr.RoiRectFraction
+import fr.antoinehory.ocraurebesh.ui.theme.HudAmber
+import fr.antoinehory.ocraurebesh.ui.theme.HudCyan
+import fr.antoinehory.ocraurebesh.ui.theme.HudEmerald
 
 /**
- * Superposition graphique épurée dessinant uniquement les 4 repères d'angle HUD
- * délimitant la zone plein écran analysée ([roiFraction]), sans assombrir l'image.
+ * Superposition graphique dessinant les 4 repères d'angle HUD aux extrémités
+ * de son conteneur (placé dans l'espace libre entre les barres d'interface afin
+ * de garantir zéro chevauchement en Portrait comme en Paysage).
  */
 @Composable
 fun ScannerOverlay(
-    roiFraction: RoiRectFraction,
     isPaused: Boolean,
     hasRecognizedText: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val accentColor = when {
-        isPaused -> Color(0xFFFFB300)          // Ambre : Image figée
-        hasRecognizedText -> Color(0xFF00E676) // Vert émeraude : Texte Aurebesh détecté
-        else -> Color(0xFF00E5FF)              // Cyan hologramme : Scan actif
+        isPaused -> HudAmber
+        hasRecognizedText -> HudEmerald
+        else -> HudCyan
     }
 
     Spacer(
         modifier = modifier
             .fillMaxSize()
             .drawWithCache {
-                val roiLeft = size.width * roiFraction.leftFraction
-                val roiTop = size.height * roiFraction.topFraction
-                val roiWidth = size.width * roiFraction.widthFraction
-                val roiHeight = size.height * roiFraction.heightFraction
+                val insetPx = 4.dp.toPx()
+                val bracketThicknessPx = 3.dp.toPx()
+                val bracketLengthPx = 24.dp.toPx()
 
-                val bracketThicknessPx = 3.5.dp.toPx()
-                val bracketLengthPx = 28.dp.toPx()
-
-                val roiRect = Rect(
-                    offset = Offset(roiLeft, roiTop),
-                    size = Size(roiWidth, roiHeight),
-                )
+                val left = insetPx
+                val top = insetPx
+                val right = (size.width - insetPx).coerceAtLeast(left + 1f)
+                val bottom = (size.height - insetPx).coerceAtLeast(top + 1f)
 
                 onDrawBehind {
-                    val left = roiRect.left
-                    val top = roiRect.top
-                    val right = roiRect.right
-                    val bottom = roiRect.bottom
-
                     // Coin supérieur gauche
                     drawLine(
                         color = accentColor,
