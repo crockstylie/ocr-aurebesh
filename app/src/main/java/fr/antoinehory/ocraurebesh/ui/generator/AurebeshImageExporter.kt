@@ -384,6 +384,9 @@ object AurebeshImageExporter {
 
         val fontBytes = context.assets.open(fontOption.assetPath).use { it.readBytes() }
         val fontBase64 = Base64.encodeToString(fontBytes, Base64.NO_WRAP)
+        val isOtf = fontOption.assetPath.endsWith(".otf", ignoreCase = true)
+        val fontMime = if (isOtf) "font/otf" else "font/ttf"
+        val fontFormat = if (isOtf) "opentype" else "truetype"
 
         val textHex = argbToHex(textColorArgb)
         val bgHex = argbToHex(backgroundColorArgb)
@@ -401,7 +404,7 @@ object AurebeshImageExporter {
             appendLine("    <style>")
             appendLine("      @font-face {")
             appendLine("        font-family: '${fontOption.name}';")
-            appendLine("        src: url('data:font/ttf;base64,$fontBase64') format('truetype');")
+            appendLine("        src: url('data:$fontMime;base64,$fontBase64') format('$fontFormat');")
             appendLine("      }")
             appendLine("      .aur-text {")
             appendLine("        font-family: '${fontOption.name}', sans-serif;")

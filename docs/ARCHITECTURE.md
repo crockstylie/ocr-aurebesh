@@ -73,7 +73,14 @@ fr.antoinehory.ocraurebesh/
 | `app/src/main/assets/tessdata/aurebesh.traineddata` | Modèle LSTM Tesseract 5 entraîné sur mesure (Regular, Bold, Condensed, quantifié) | Actif |
 | `app/src/main/assets/fonts/aurebesh_regular.ttf` | Police Aurebesh Regular pour le Studio Aurebesh | Actif |
 | `app/src/main/assets/fonts/aurebesh_bold.ttf` | Police Aurebesh Bold pour le Studio Aurebesh | Actif |
+| `app/src/main/assets/fonts/aurebesh_italic.ttf` | Police Aurebesh Italic pour le Studio Aurebesh | Actif |
 | `app/src/main/assets/fonts/aurebesh_condensed.ttf` | Police Aurebesh Condensed pour le Studio Aurebesh | Actif |
+| `app/src/main/assets/fonts/aurebesh_af_canon.otf` | Police Aurebesh AF Canon pour le Studio Aurebesh | Actif |
+| `app/src/main/assets/fonts/aurebesh_tech.otf` | Police Aurebesh AF Canon Tech pour le Studio Aurebesh | Actif |
+| `app/src/main/assets/fonts/aurebesh_cantina.otf` | Police Aurebesh Cantina (style enseigne) pour le Studio Aurebesh | Actif |
+| `app/src/main/assets/fonts/aurebesh_droid.ttf` | Police Aurebesh Droid (style matriciel) pour le Studio Aurebesh | Actif |
+| `app/src/main/assets/fonts/droidobesh_depot.otf` | Police Droidobesh Depot (style industriel) pour le Studio Aurebesh | Actif |
+| `app/src/main/assets/fonts/aurebesh_hand.ttf` | Police Aurek-Besh Hand (style manuscrit) pour le Studio Aurebesh | Actif |
 | `tools/tessdata-trainer/Dockerfile` | Image Docker Ubuntu 24.04 + Tesseract 5 + Python pour l'entraînement du modèle | Actif |
 | `tools/tessdata-trainer/train_aurebesh.py` | Script reproductible de génération synthétique et d'entraînement LSTM Aurebesh | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/MainActivity.kt` | Activité hôte Jetpack Compose branchant `ScannerViewModel` et `ScannerRoute` | Actif |
@@ -91,8 +98,8 @@ fr.antoinehory.ocraurebesh/
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerViewModel.kt` | `ViewModel` orchestrant l'OCR, la caméra et l'historique Room | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerScreen.kt` | `ScannerRoute` et `ScannerScreen` Edge-to-Edge adaptatif (Portrait + Paysage) avec accès au Studio Aurebesh | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/generator/AurebeshGeneratorActivity.kt` | Activité dédiée du Studio / Générateur Aurebesh | Actif |
-| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/generator/AurebeshGeneratorModels.kt` | Options de police (`Regular`, `Bold`, `Condensed`), alignement, couleurs et formats d'export | Actif |
-| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/generator/AurebeshGeneratorScreen.kt` | Écran Compose adaptatif (Portrait/Paysage) de saisie latine, prévisualisation Aurebesh et mise en page | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/generator/AurebeshGeneratorModels.kt` | Options de 9 polices Aurebesh, alignement, couleurs et formats d'export | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/generator/AurebeshGeneratorScreen.kt` | Écran Compose épuré avec menu Style/Couleurs rétractable, damier DAO et Color Picker HSV | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/generator/AurebeshImageExporter.kt` | Exportateur SVG (police `.ttf` Base64 embarquée), PNG et JPG vers `MediaStore.Downloads` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/history/ScanHistorySheet.kt` | `ModalBottomSheet` d'historique et favoris avec `LazyColumn` optimisée (`key` + `contentType`) | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/data/local/entity/ScanHistoryEntity.kt` | Entité Room `scan_history` et fonctions de mapping `toDomain()` / `toEntity()` | Actif |

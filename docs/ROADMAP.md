@@ -57,10 +57,11 @@ Légende : `[x]` Terminé | `[/]` En cours | `[ ]` À faire
 - [x] Ajustements de performance Compose et validation sur des images Aurebesh réelles (écrans et imprimés)
 
 ## Phase 8 : Studio / Générateur Aurebesh (`ui/generator/`)
-- [x] Intégration des 3 polices Aurebesh (`aurebesh_regular.ttf`, `aurebesh_bold.ttf`, `aurebesh_condensed.ttf`) dans `app/src/main/assets/fonts/`
+- [x] Intégration de 9 polices Aurebesh (`Regular`, `Bold`, `Italic`, `Condensed`, `Canon AF`, `Cantina`, `Droid`, `Droid Depot`, `Hand`) dans `app/src/main/assets/fonts/`
 - [x] Création de `AurebeshGeneratorActivity` accessible depuis un bouton HUD dans `ScannerScreen` (tout en conservant l'ouverture directe de l'application sur le scanner)
-- [x] Création de `AurebeshGeneratorScreen` avec saisie multi-lignes en alphabet latin, rendu Aurebesh temps réel, choix de la police (`Regular`, `Bold`, `Condensed`), alignement (`Gauche`, `Centre`, `Droite`), taille de texte, couleur de lettres et couleur de fond (incluant fond transparent)
-- [x] Export et téléchargement en **SVG** (avec police `.ttf` encodée en Base64 intégrée dans `@font-face`), **PNG** et **JPG** dans `Téléchargements/OCRAurebesh` via `MediaStore.Downloads`
+- [x] Création de `AurebeshGeneratorScreen` épuré : barre supérieure sans titre, bouton Télécharger unique avec sous-menu (`SVG`, `PNG`, `JPG`), grand champ multi-lignes sans label, menu de style/couleurs rétractable à la demande, pastille damier blanc/gris DAO pour la transparence et Color Picker HSV interactif
+- [x] Export et téléchargement en **SVG** (avec police `.ttf`/`.otf` encodée en Base64 intégrée dans `@font-face`), **PNG** et **JPG** dans `Téléchargements/OCRAurebesh` via `MediaStore.Downloads`
 - [x] Notification système de téléchargement avec aperçu de l'image et boutons d'action **Partager** / **Ouvrir** (`POST_NOTIFICATIONS` + `Intent.ACTION_SEND` / `Intent.ACTION_VIEW`)
+
 
 

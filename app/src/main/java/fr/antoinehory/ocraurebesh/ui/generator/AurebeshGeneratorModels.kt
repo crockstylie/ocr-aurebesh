@@ -12,7 +12,14 @@ enum class AurebeshFontOption(
 ) {
     REGULAR("Regular", "fonts/aurebesh_regular.ttf"),
     BOLD("Bold", "fonts/aurebesh_bold.ttf"),
+    ITALIC("Italic", "fonts/aurebesh_italic.ttf"),
     CONDENSED("Condensed", "fonts/aurebesh_condensed.ttf"),
+    CANON_AF("Canon AF", "fonts/aurebesh_af_canon.otf"),
+    CANON_TECH("Canon Tech", "fonts/aurebesh_tech.otf"),
+    CANTINA("Cantina", "fonts/aurebesh_cantina.otf"),
+    DROID("Droid", "fonts/aurebesh_droid.ttf"),
+    DROID_DEPOT("Droid Depot", "fonts/droidobesh_depot.otf"),
+    HAND("Hand", "fonts/aurebesh_hand.ttf"),
 }
 
 /**
