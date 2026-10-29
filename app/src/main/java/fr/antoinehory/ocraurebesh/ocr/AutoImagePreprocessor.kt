@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Matrix
 import androidx.compose.runtime.Immutable
 import androidx.core.graphics.createBitmap
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -54,12 +55,14 @@ internal class PreprocessedPixelBuffers(
  *
  * Étapes appliquées sur la zone de visée (ROI) :
  * 1. Rotation et découpage strict de la ROI aligné sur le recadrage `FILL_CENTER` de l'écran,
- *    suivi d'une mise à l'échelle optimale pour le réseau LSTM de Tesseract.
- * 2. Conversion en niveaux de gris et étirement d'histogramme robuste (percentiles 2% - 98%)
- *    pour gérer les textes colorés (néons, hologrammes bleus/rouges/jaunes) et les faibles contrastes.
- * 3. Lissage anti-Moiré 3x3 (suppression de la grille de sous-pixels des écrans filmés).
- * 4. Binarisation hybride (Otsu global + Seuillage adaptatif local par Image Intégrale de Bradley-Roth)
- *    pour éliminer les ombres, reflets d'écran et halos lumineux non uniformes.
+ *    avec préservation de la haute définition (`1080p`) pour lire jusqu'à 20 lignes de 30 petits caractères.
+ * 2. Conversion en niveaux de gris et étirement d'histogramme centré (percentiles `0.05% - 99.95%`)
+ *    capable de capter aussi bien un mot isolé ou un texte en mode contour (`< 0.2%` des pixels)
+ *    que des textes à très faible contraste.
+ * 3. Lissage anti-bruit 3x3 suivi d'un rehaussement adaptatif des contours (Unsharp Mask 5x5)
+ *    pour restaurer la netteté des textes flous et des lettres en mode contour.
+ * 4. Binarisation adaptative multi-échelle par Image Intégrale (petit rayon pour les petits textes
+ *    de 20 lignes et les lettres en mode contour + grand rayon pour les traits pleins épais).
  * 5. Détection automatique de la polarité (texte clair sur fond foncé vs texte foncé sur fond clair)
  *    et ajout d'une marge blanche de sécurité autour de la ROI pour Tesseract LSTM.
  */
@@ -67,8 +70,8 @@ object AutoImagePreprocessor {
 
     internal const val COLOR_BLACK = -0x1000000 // 0xFF000000
     internal const val COLOR_WHITE = -0x1       // 0xFFFFFFFF
-    private const val FULL_SCREEN_REFERENCE_HEIGHT_PX = 560
-    private const val MIN_TARGET_ROI_HEIGHT_PX = 112
+    private const val FULL_SCREEN_REFERENCE_HEIGHT_PX = 1080
+    private const val MIN_TARGET_ROI_HEIGHT_PX = 180
     private const val PADDING_PX = 16
 
     /**
@@ -133,7 +136,7 @@ object AutoImagePreprocessor {
             orientedBitmap.recycle()
         }
 
-        // Hauteur cible proportionnelle à la fraction d'écran analysée pour conserver la taille des glyphes
+        // Hauteur cible haute définition pour conserver >= 35 px par ligne sur un bloc de 20 lignes
         val targetHeightPx = (FULL_SCREEN_REFERENCE_HEIGHT_PX * roiFraction.heightFraction)
             .roundToInt()
             .coerceIn(MIN_TARGET_ROI_HEIGHT_PX, FULL_SCREEN_REFERENCE_HEIGHT_PX)
@@ -152,8 +155,8 @@ object AutoImagePreprocessor {
     }
 
     /**
-     * Normalise, binarise (hybride Otsu + adaptatif local) et détecte automatiquement la polarité d'un [Bitmap] découpé,
-     * en entourant le résultat d'une marge blanche propre pour Tesseract.
+     * Normalise, rehausse la netteté, binarise en multi-échelle et détecte automatiquement la polarité
+     * d'un [Bitmap] découpé, en entourant le résultat d'une marge blanche propre pour Tesseract.
      */
     fun preprocessForOcr(roiBitmap: Bitmap): PreprocessedImages {
         val width = roiBitmap.width
@@ -214,9 +217,10 @@ object AutoImagePreprocessor {
             rawHistogram[luma]++
         }
 
-        // 2. Étirement d'histogramme entre le 2e et le 98e percentile
-        val lowCutCount = (totalPixels * 0.02f).roundToInt()
-        val highCutCount = (totalPixels * 0.98f).roundToInt()
+        // 2. Étirement d'histogramme entre les percentiles 0.05 % et 99.95 %
+        //    (permet de capter même un petit mot ou des lettres en mode contour couvrant < 0.2 % de la ROI)
+        val lowCutCount = max(1, (totalPixels * 0.0005f).roundToInt())
+        val highCutCount = min(totalPixels, (totalPixels * 0.9995f).roundToInt())
 
         var minLuma = 0
         var accumulated = 0
@@ -239,15 +243,24 @@ object AutoImagePreprocessor {
         }
 
         val stretchedGray = IntArray(totalPixels)
-        // Garde-fou : sur une surface quasi-uniforme (bureau, mur) où l'écart de luminance est < 64,
-        // on bride l'étirement pour ne pas amplifier le grain ou le bruit capteur en faux glyphes.
-        val range = max(64, maxLuma - minLuma)
+        val actualRange = maxLuma - minLuma
+        // Plancher à 48 pour étirer les textes à faible contraste tout en empêchant
+        // le grain de bois/bureau (actualRange ~ 12) de dépasser le seuil local après lissage.
+        val range = max(48, actualRange)
+        val midLuma = (minLuma + maxLuma) shr 1
         for (i in 0 until totalPixels) {
-            stretchedGray[i] = ((rawGray[i] - minLuma) * 255 / range).coerceIn(0, 255)
+            stretchedGray[i] = (128 + ((rawGray[i] - midLuma) * 255) / range).coerceIn(0, 255)
         }
 
-        // 3. Lissage 3x3 rapide pour atténuer le bruit capteur et la trame Moiré des écrans
-        val grayValues = smooth3x3(stretchedGray, width, height)
+        // 3. Lissage 3x3 (suppression du grain 1px) suivi d'un rehaussement de netteté 5x5 (Unsharp Mask)
+        //    uniquement si l'image présente une dynamique minimale (actualRange >= 22).
+        val smoothed = smooth3x3(stretchedGray, width, height)
+        val grayValues = if (actualRange >= 22) {
+            sharpenEdges5x5(smoothed, width, height)
+        } else {
+            smoothed
+        }
+
         val normalizedHistogram = IntArray(256)
         for (i in 0 until totalPixels) {
             normalizedHistogram[grayValues[i]]++
@@ -278,7 +291,7 @@ object AutoImagePreprocessor {
 
         val shouldInvert = totalBorderPixels > 0 && (darkBorderPixels * 2 > totalBorderPixels)
 
-        // 6. Construction de l'Image Intégrale pour le seuillage adaptatif local (Bradley-Roth)
+        // 6. Construction de l'Image Intégrale pour le seuillage adaptatif multi-échelle
         val stride = width + 1
         val integral = LongArray(stride * (height + 1))
         for (y in 0 until height) {
@@ -292,8 +305,12 @@ object AutoImagePreprocessor {
             }
         }
 
-        val windowRadius = max(6, min(28, min(width, height) / 2))
-        val localContrastDelta = 26
+        val minDim = min(width, height)
+        // Fenêtre fine (petits caractères sur 20 lignes & lettres en mode contour où intérieur == fond)
+        val smallRadius = max(4, min(8, minDim / 24))
+        // Fenêtre large (traits pleins moyens et grands caractères)
+        val largeRadius = max(10, min(24, minDim / 2))
+        val localContrastDelta = 18
 
         val darkOnLightPixels = IntArray(totalPixels)
         val lightOnDarkPixels = IntArray(totalPixels)
@@ -301,30 +318,43 @@ object AutoImagePreprocessor {
         var lightGlyphCount = 0
 
         for (y in 0 until height) {
-            val y1 = max(0, y - windowRadius)
-            val y2 = min(height - 1, y + windowRadius)
+            val sy1 = max(0, y - smallRadius)
+            val sy2 = min(height - 1, y + smallRadius)
+            val ly1 = max(0, y - largeRadius)
+            val ly2 = min(height - 1, y + largeRadius)
             val rowOffset = y * width
 
             for (x in 0 until width) {
-                val x1 = max(0, x - windowRadius)
-                val x2 = min(width - 1, x + windowRadius)
-                val count = (x2 - x1 + 1) * (y2 - y1 + 1)
+                val sx1 = max(0, x - smallRadius)
+                val sx2 = min(width - 1, x + smallRadius)
+                val sCount = (sx2 - sx1 + 1) * (sy2 - sy1 + 1)
+                val sSum = integral[(sy2 + 1) * stride + (sx2 + 1)] -
+                    integral[sy1 * stride + (sx2 + 1)] -
+                    integral[(sy2 + 1) * stride + sx1] +
+                    integral[sy1 * stride + sx1]
+                val smallMean = (sSum / sCount).toInt()
 
-                val sum = integral[(y2 + 1) * stride + (x2 + 1)] -
-                    integral[y1 * stride + (x2 + 1)] -
-                    integral[(y2 + 1) * stride + x1] +
-                    integral[y1 * stride + x1]
+                val lx1 = max(0, x - largeRadius)
+                val lx2 = min(width - 1, x + largeRadius)
+                val lCount = (lx2 - lx1 + 1) * (ly2 - ly1 + 1)
+                val lSum = integral[(ly2 + 1) * stride + (lx2 + 1)] -
+                    integral[ly1 * stride + (lx2 + 1)] -
+                    integral[(ly2 + 1) * stride + lx1] +
+                    integral[ly1 * stride + lx1]
+                val largeMean = (lSum / lCount).toInt()
 
-                val localMean = (sum / count).toInt()
                 val g = grayValues[rowOffset + x]
 
-                // Candidat Texte Sombre sur Fond Clair :
-                // Seuls les traits présentant un fort contraste local négatif deviennent noirs
-                val isDarkGlyph = g <= localMean - localContrastDelta
+                // Détection multi-échelle :
+                // - smallMean capte les traits fins, contours évidés et petites lignes denses
+                // - largeMean capte le cœur des traits pleins épais sans les évider
+                val isDarkGlyph =
+                    (g <= smallMean - localContrastDelta) ||
+                        (g <= largeMean - localContrastDelta)
 
-                // Candidat Texte Clair sur Fond Sombre (écran, hologramme, néon) :
-                // Seuls les traits présentant un fort contraste local positif deviennent noirs
-                val isLightGlyph = g >= localMean + localContrastDelta
+                val isLightGlyph =
+                    (g >= smallMean + localContrastDelta) ||
+                        (g >= largeMean + localContrastDelta)
 
                 if (isDarkGlyph) darkGlyphCount++
                 if (isLightGlyph) lightGlyphCount++
@@ -353,22 +383,57 @@ object AutoImagePreprocessor {
     }
 
     /**
-     * Lissage 3x3 rapide préservant les bords tout en supprimant le bruit haute fréquence.
+     * Lissage 3x3 rapide (incluant les bordures par répétition de bord) supprimant le bruit haute fréquence.
      */
     private fun smooth3x3(input: IntArray, width: Int, height: Int): IntArray {
-        if (width < 5 || height < 5) return input.copyOf()
-        val output = input.copyOf()
-        for (y in 1 until height - 1) {
+        if (width < 3 || height < 3) return input.copyOf()
+        val output = IntArray(width * height)
+        for (y in 0 until height) {
             val row = y * width
-            val prevRow = (y - 1) * width
-            val nextRow = (y + 1) * width
-            for (x in 1 until width - 1) {
-                // Noyau pondéré (centre poids 4, adjacents directs poids 2, coins poids 1 -> somme = 16)
+            val prevRow = max(0, y - 1) * width
+            val nextRow = min(height - 1, y + 1) * width
+            for (x in 0 until width) {
+                val xm1 = max(0, x - 1)
+                val xp1 = min(width - 1, x + 1)
                 val sum =
-                    input[prevRow + x - 1] + (input[prevRow + x] shl 1) + input[prevRow + x + 1] +
-                        (input[row + x - 1] shl 1) + (input[row + x] shl 2) + (input[row + x + 1] shl 1) +
-                        input[nextRow + x - 1] + (input[nextRow + x] shl 1) + input[nextRow + x + 1]
+                    input[prevRow + xm1] + (input[prevRow + x] shl 1) + input[prevRow + xp1] +
+                        (input[row + xm1] shl 1) + (input[row + x] shl 2) + (input[row + xp1] shl 1) +
+                        input[nextRow + xm1] + (input[nextRow + x] shl 1) + input[nextRow + xp1]
                 output[row + x] = sum shr 4
+            }
+        }
+        return output
+    }
+
+    /**
+     * Rehaussement de netteté (Unsharp Mask 5x5) avec seuil de bruit :
+     * amplifie les contours flous, les faibles contrastes et les glyphes en mode contour
+     * sans amplifier les surfaces uniformes.
+     */
+    private fun sharpenEdges5x5(input: IntArray, width: Int, height: Int): IntArray {
+        if (width < 7 || height < 7) return input.copyOf()
+        val output = input.copyOf()
+        for (y in 2 until height - 2) {
+            val row = y * width
+            val rM2 = (y - 2) * width
+            val rM1 = (y - 1) * width
+            val rP1 = (y + 1) * width
+            val rP2 = (y + 2) * width
+            for (x in 2 until width - 2) {
+                val center = input[row + x]
+                // Moyenne sur l'anneau périphérique 5x5 (8 points cardinaux et diagonaux à distance 2)
+                val ringSum =
+                    input[rM2 + x - 2] + input[rM2 + x] + input[rM2 + x + 2] +
+                        input[row + x - 2] + input[row + x + 2] +
+                        input[rP2 + x - 2] + input[rP2 + x] + input[rP2 + x + 2] +
+                        input[rM1 + x - 1] + input[rM1 + x + 1] +
+                        input[rP1 + x - 1] + input[rP1 + x + 1]
+                val surroundMean = ringSum / 12
+                val diff = center - surroundMean
+                // Seuil à 5 pour ignorer le bruit résiduel sur une surface plate tout en rehaussant le flou
+                if (abs(diff) >= 5) {
+                    output[row + x] = (center + (diff * 3) / 2).coerceIn(0, 255)
+                }
             }
         }
         return output

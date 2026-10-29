@@ -9,8 +9,10 @@ import org.junit.Test
  * Tests unitaires de [AutoImagePreprocessor] vérifiant :
  * - Le calcul du seuil optimal de binarisation d'Otsu.
  * - La détection automatique de polarité (texte sombre sur fond clair vs texte clair/néon sur fond sombre).
- * - L'étirement d'histogramme 2%-98% sur des textes à faible contraste ou colorés (hologrammes).
- * - Le seuillage adaptatif local par Image Intégrale sous éclairage non uniforme (ombres / vignettage).
+ * - La préservation des petits textes (< 1 % de la ROI) grâce aux percentiles 0.05 % - 99.95 %.
+ * - L'extraction des lettres en mode contour (intérieur de la lettre de la même couleur que le fond).
+ * - L'extraction des textes flous et à faible contraste via le rehaussement Unsharp Mask 5x5.
+ * - Le rejet du bruit sur une surface de bureau uniforme.
  */
 class AutoImagePreprocessorTest {
 
@@ -52,6 +54,56 @@ class AutoImagePreprocessorTest {
         assertEquals(AutoImagePreprocessor.COLOR_BLACK, result.primaryPixels[centerIndex])
         assertEquals(AutoImagePreprocessor.COLOR_WHITE, result.invertedPixels[centerIndex])
         assertEquals(AutoImagePreprocessor.COLOR_WHITE, result.primaryPixels[0])
+    }
+
+    @Test
+    fun `preprocessPixels detects sparse black text covering less than 1 percent of white ROI`() {
+        val width = 100
+        val height = 100
+        val bgArgb = (0xFF shl 24) or 0xF2F2F2
+        val fgArgb = (0xFF shl 24) or 0x121212
+        val pixels = IntArray(width * height) { bgArgb }
+
+        // Trait fin couvrant seulement 0.6 % des pixels (60 pixels sur 10 000)
+        for (y in 48..50) {
+            for (x in 40 until 60) {
+                pixels[y * width + x] = fgArgb
+            }
+        }
+
+        val result = AutoImagePreprocessor.preprocessPixels(pixels, width, height)
+
+        assertFalse(result.wasAutoInverted)
+        assertEquals(AutoImagePreprocessor.COLOR_BLACK, result.primaryPixels[49 * width + 50])
+        assertTrue(
+            "Le ratio d'encre (${result.primaryInkRatio}) doit être > 0.002f",
+            result.primaryInkRatio > 0.002f,
+        )
+    }
+
+    @Test
+    fun `preprocessPixels extracts outlined hollow letters where letter interior matches background`() {
+        val width = 48
+        val height = 48
+        val bgArgb = (0xFF shl 24) or 0xEEEEEE
+        val contourArgb = (0xFF shl 24) or 0x222222
+        val pixels = IntArray(width * height) { bgArgb }
+
+        // Lettre en mode contour (cadre creux de 2px d'épaisseur entre 14..33, intérieur 16..31 identique au fond)
+        for (y in 14..33) {
+            for (x in 14..33) {
+                val isContour = y in 14..15 || y in 32..33 || x in 14..15 || x in 32..33
+                if (isContour) {
+                    pixels[y * width + x] = contourArgb
+                }
+            }
+        }
+
+        val result = AutoImagePreprocessor.preprocessPixels(pixels, width, height)
+
+        // Le contour (x=15, y=24) doit être noir et l'intérieur creux (x=24, y=24) doit rester blanc
+        assertEquals(AutoImagePreprocessor.COLOR_BLACK, result.primaryPixels[24 * width + 15])
+        assertEquals(AutoImagePreprocessor.COLOR_WHITE, result.primaryPixels[24 * width + 24])
     }
 
     @Test
@@ -113,7 +165,7 @@ class AutoImagePreprocessorTest {
             for (x in 0 until width) {
                 val bgLuma = 130 + (x * 115) / width
                 val isGlyphStroke = (y in 7..12) && (x in 8..11 || x in 28..31)
-                val luma = if (isGlyphStroke) bgLuma - 65 else bgLuma
+                val luma = if (isGlyphStroke) bgLuma - 35 else bgLuma
                 val clamped = luma.coerceIn(0, 255)
                 pixels[y * width + x] = (0xFF shl 24) or (clamped shl 16) or (clamped shl 8) or clamped
             }
@@ -122,7 +174,7 @@ class AutoImagePreprocessorTest {
         val result = AutoImagePreprocessor.preprocessPixels(pixels, width, height)
 
         // Le glyphe dans la zone ombragée (x=9, y=9) ET le glyphe dans la zone éclairée (x=29, y=9)
-        // doivent tous deux être détectés en noir grâce au seuillage adaptatif local
+        // doivent tous deux être détectés en noir même avec un faible contraste local (-35)
         assertEquals(AutoImagePreprocessor.COLOR_BLACK, result.primaryPixels[9 * width + 9])
         assertEquals(AutoImagePreprocessor.COLOR_BLACK, result.primaryPixels[9 * width + 29])
     }

@@ -26,8 +26,10 @@ interface OcrRecognizer {
  *
  * Caractéristiques clés :
  * - Toutes les opérations natives sont sérialisées via un [Mutex] sur un [CoroutineDispatcher] dédié.
- * - Filtrage strict anti-faux-positifs (densité d'encre, confiance minimale par mot et globale,
- *   rejet des caractères isolés ou fragmentés produits par les objets d'un bureau).
+ * - Support des textes courts ET des paragraphes multi-lignes denses (ex. 20 lignes de 30 caractères)
+ *   avec conservation des retours à la ligne (`\n`).
+ * - Support des textes légèrement flous, à faible contraste ou en mode contour, tout en filtrant
+ *   les faux positifs sur un bureau vide.
  */
 class AurebeshOcrEngine(
     private val tessDataManager: TessDataManager,
@@ -79,7 +81,7 @@ class AurebeshOcrEngine(
                     PassResult.EMPTY
                 }
 
-                // On ne court-circuite la Passe 2 que si la Passe 1 est très fiable (>= 86% et >= 3 caractères)
+                // Court-circuit de la Passe 2 si la Passe 1 est déjà très fiable
                 if (
                     primaryPass.nonSpaceLength >= 3 &&
                     primaryPass.confidence >= HIGH_CONFIDENCE_SHORT_CIRCUIT
@@ -110,7 +112,7 @@ class AurebeshOcrEngine(
                 }
 
                 val minRequiredConfidence = when {
-                    bestPass.nonSpaceLength < 2 -> 101 // Rejette systématiquement un caractère unique isolé
+                    bestPass.nonSpaceLength < 2 -> 101 // Rejette un caractère unique isolé
                     bestPass.nonSpaceLength <= 3 -> SHORT_TEXT_MIN_CONFIDENCE
                     else -> MIN_ACCEPTABLE_CONFIDENCE
                 }
@@ -174,44 +176,66 @@ class AurebeshOcrEngine(
         val wordConfidences = api.wordConfidences() ?: IntArray(0)
         api.clear()
 
-        val rawWords = rawText
+        // Découpage ligne par ligne pour préserver la mise en page des textes multi-lignes (ex. 20 lignes)
+        val rawLines = rawText
             .uppercase()
-            .replace(DISALLOWED_CHARS_REGEX, " ")
-            .trim()
-            .split(MULTIPLE_SPACES_REGEX)
+            .lines()
+            .map { line ->
+                line.replace(DISALLOWED_CHARS_REGEX, " ")
+                    .trim()
+                    .split(MULTIPLE_SPACES_REGEX)
+                    .filter { it.isNotEmpty() }
+            }
             .filter { it.isNotEmpty() }
 
-        if (rawWords.isEmpty()) return PassResult.EMPTY
+        if (rawLines.isEmpty()) return PassResult.EMPTY
 
-        // Filtrage par mot : on écarte les mots de faible confiance générés par les bords d'objets du décor
-        val confidentWords = if (wordConfidences.size == rawWords.size) {
-            rawWords.filterIndexed { index, word ->
-                val wordConf = wordConfidences[index]
-                if (word.length == 1) {
-                    wordConf >= SINGLE_LETTER_WORD_MIN_CONFIDENCE
+        val totalWordCount = rawLines.sumOf { it.size }
+        val useWordConfidences = wordConfidences.size == totalWordCount
+        var wordIdx = 0
+
+        val filteredLines = mutableListOf<String>()
+        val allKeptWords = mutableListOf<String>()
+
+        for (lineWords in rawLines) {
+            val keptLineWords = mutableListOf<String>()
+            for (word in lineWords) {
+                val keep = if (useWordConfidences) {
+                    val wordConf = wordConfidences[wordIdx]
+                    if (word.length == 1) {
+                        wordConf >= SINGLE_LETTER_WORD_MIN_CONFIDENCE
+                    } else {
+                        wordConf >= MIN_WORD_CONFIDENCE
+                    }
                 } else {
-                    wordConf >= MIN_WORD_CONFIDENCE
+                    true
+                }
+                wordIdx++
+                if (keep) {
+                    keptLineWords.add(word)
+                    allKeptWords.add(word)
                 }
             }
-        } else {
-            rawWords
+            if (keptLineWords.isNotEmpty()) {
+                filteredLines.add(keptLineWords.joinToString(" "))
+            }
         }
 
-        if (confidentWords.isEmpty()) return PassResult.EMPTY
+        if (allKeptWords.isEmpty()) return PassResult.EMPTY
 
-        // Rejet si tous les mots ne sont que des lettres isolées éparpillées (bruit typique d'un bureau/clavier)
-        if (confidentWords.all { it.length == 1 }) {
+        // Rejet si tous les mots ne sont que des lettres uniques éparpillées (bruit typique d'objets sur un bureau)
+        if (allKeptWords.all { it.length == 1 }) {
             return PassResult.EMPTY
         }
 
-        val cleanedText = confidentWords.joinToString(" ")
-        val nonSpaceLength = cleanedText.count { it != ' ' }
+        val cleanedText = filteredLines.joinToString("\n")
+        val nonSpaceLength = cleanedText.count { it != ' ' && it != '\n' }
 
         if (nonSpaceLength < 2 || confidence < MIN_ACCEPTABLE_CONFIDENCE) {
             return PassResult.EMPTY
         }
 
-        val lengthWeight = min(4, nonSpaceLength)
+        val lengthWeight = min(6, nonSpaceLength)
         val qualityScore = confidence * (2 + lengthWeight)
 
         return PassResult(
@@ -240,13 +264,14 @@ class AurebeshOcrEngine(
 
     companion object {
         private const val ALLOWED_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 "
-        private const val MIN_INK_RATIO = 0.005f
-        private const val MAX_INK_RATIO = 0.35f
-        private const val HIGH_CONFIDENCE_SHORT_CIRCUIT = 86
-        private const val MIN_ACCEPTABLE_CONFIDENCE = 78
-        private const val SHORT_TEXT_MIN_CONFIDENCE = 84
-        private const val MIN_WORD_CONFIDENCE = 75
-        private const val SINGLE_LETTER_WORD_MIN_CONFIDENCE = 88
+        // Permet aussi bien un mot court en mode contour (0.06% de la ROI) qu'un bloc dense de 20 lignes (45%)
+        private const val MIN_INK_RATIO = 0.0006f
+        private const val MAX_INK_RATIO = 0.45f
+        private const val HIGH_CONFIDENCE_SHORT_CIRCUIT = 82
+        private const val MIN_ACCEPTABLE_CONFIDENCE = 58
+        private const val SHORT_TEXT_MIN_CONFIDENCE = 68
+        private const val MIN_WORD_CONFIDENCE = 52
+        private const val SINGLE_LETTER_WORD_MIN_CONFIDENCE = 72
         private val DISALLOWED_CHARS_REGEX = Regex("[^A-Z0-9 ]")
         private val MULTIPLE_SPACES_REGEX = Regex("\\s+")
     }

@@ -596,16 +596,21 @@ private fun TranslationHudDock(
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                val isDenseMultiLine = recognizedText.count { it == '\n' } >= 2
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 28.dp, max = 88.dp)
+                        .heightIn(min = 28.dp, max = if (isDenseMultiLine) 180.dp else 96.dp)
                         .verticalScroll(scrollState),
                     contentAlignment = Alignment.CenterStart,
                 ) {
                     Text(
                         text = recognizedText,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = if (isDenseMultiLine) {
+                            MaterialTheme.typography.bodyMedium
+                        } else {
+                            MaterialTheme.typography.titleMedium
+                        },
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
                         color = HudTextPrimary,

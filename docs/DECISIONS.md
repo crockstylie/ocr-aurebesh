@@ -78,5 +78,15 @@
   3. **Export SVG en tracés vectorisés (`<path d="..." />`) pour Adobe Illustrator (`AurebeshImageExporter`)** : Afin que le fichier `.svg` soit directement exploitable dans Adobe Illustrator, Inkscape ou Figma sans installer la police sur l'ordinateur, chaque glyphe Aurebesh est vectorisé en courbes de Bézier (`<path d="M ... Q ... C ... Z" />`) via `Paint.getTextPath` et `PathIterator` (API 34+) / `Path.approximate` (API 29–33).
   4. **Sauvegarde via `MediaStore.Downloads` & Notification Système avec Partage** : Les exports SVG, PNG et JPG sont enregistrés dans `Download/OCRAurebesh` via `MediaStore.Downloads.EXTERNAL_CONTENT_URI`, déclenchent une notification système (`NotificationCompat` avec aperçu `BigPictureStyle` pour PNG/JPG) proposant les actions **Partager** (`Intent.ACTION_SEND`) et **Ouvrir** (`Intent.ACTION_VIEW`), ainsi qu'un bouton **Partager** direct sur la Snackbar in-app.
 
+## ADR-009 : Reconnaissance Multi-Lignes (20 lignes), Lettres en Mode Contour, Flou & Faible Contraste
+- **Date** : 2026-10-29
+- **Contexte** : Le détecteur devait être capable de reconnaître à nouveau parfaitement le noir sur blanc, mais aussi de scanner des blocs denses (ex. 20 lignes de 30 petits caractères), des images légèrement floues, des faibles contrastes et des lettres affichées en **mode contour** (où l'intérieur de la lettre a la même couleur que le fond), sans produire de faux positifs sur un bureau vide.
+- **Décision** :
+  1. **Capture Full HD `1920x1080` & ROI Haute Résolution (`CameraPreview` + `AutoImagePreprocessor`)** : Passage de la cible `ResolutionSelector` à `1920x1080` et de `FULL_SCREEN_REFERENCE_HEIGHT_PX` à `1080` afin de conserver ~35 px par ligne sur un paragraphe de 20 lignes.
+  2. **Percentiles `0.05 % - 99.95 %` & Étirement Centré (`AutoImagePreprocessor`)** : Correction du bug où les percentiles `2 % - 98 %` ignoraient les textes courts ou en mode contour couvrant `< 2 %` de la ROI. L'étirement centré autour de `midLuma` amplifie les faibles contrastes tout en laissant les surfaces uniformes (bureau) centrées à `128`.
+  3. **Rehaussement `sharpenEdges5x5` & Binarisation Multi-Échelle (`AutoImagePreprocessor`)** : Application d'un filtre Unsharp Mask $5 \times 5$ (avec seuil de bruit) pour restaurer les bords flous, suivie d'un seuillage par Image Intégrale à double rayon (`smallRadius` pour les petits caractères et les contours évidés + `largeRadius` pour les traits pleins épais).
+  4. **Préservation Multi-Lignes (`\n`) & Entraînement Docker Enrichi (`AurebeshOcrEngine` + `train_aurebesh.py`)** : Conservation des sauts de ligne dans `AurebeshOcrEngine` et ré-entraînement de `aurebesh.traineddata` (7 000 itérations sur `Regular`, `Canon AF`, `Bold`, `Condensed`) incluant 30 % de glyphes en mode contour (`stroke` et gradient morphologique `morph_edge`), du flou optique marqué (`GaussianBlur` + `UnsharpMask`) et des petites tailles (`20 px` à `54 px`).
+
+
 
 
