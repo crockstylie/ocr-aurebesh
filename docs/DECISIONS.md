@@ -39,3 +39,23 @@
 - **Conséquences** :
   - Utilisation de KSP (au lieu de KAPT obsolète) pour des temps de compilation rapides et une compatibilité native avec Kotlin `2.2.10` et AGP `9.5.0`.
   - Exposition des données sous forme de `Flow<List<ScanHistoryEntity>>` dans le DAO, mappées vers des objets `domain` immuables avant d'atteindre le `ViewModel` et l'UI Compose.
+
+## ADR-005 : Génération sur mesure du modèle `aurebesh.traineddata`
+- **Date** : 2026-10-29
+- **Contexte** : Aucun fichier `.traineddata` officiel n'est fourni par défaut avec Tesseract pour l'alphabet Aurebesh, qui est une substitution mono-alphabétique directe vers l'alphabet latin.
+- **Décision** : Générer un fichier `aurebesh.traineddata` dédié à partir d'une police Aurebesh (`.ttf`) via génération d'images synthétiques et des outils d'entraînement Tesseract (`tesstrain` / `lstmtraining` ou `text2image`).
+- **Conséquences** :
+  - Chaque glyphe Aurebesh est directement associé à son caractère latin équivalent (`A-Z`, `0-9`, ponctuation) dans le modèle `.traineddata`.
+  - Tesseract renvoie ainsi directement le texte traduit en alphabet latin sans table de correspondance post-OCR complexe.
+
+## ADR-006 : Détection automatique transparente de la polarité et du contraste (Zéro réglage utilisateur)
+- **Date** : 2026-10-29
+- **Contexte** : L'Aurebesh apparaît dans des conditions très variées : texte lumineux/coloré sur fond noir (écrans de jeux vidéo, hologrammes, enseignes néon) ou texte sombre sur fond clair (livres, panneaux imprimés). L'utilisateur ne doit avoir aucun bouton de réglage de contraste/inversion à manipuler.
+- **Décision** : Implémenter un préprocesseur automatique (`AutoImagePreprocessor`) couplé à une stratégie de double-passe sur le score de confiance dans `AurebeshOcrEngine` :
+  1. Conversion en niveaux de gris et étirement d'histogramme Min-Max (gère toutes les couleurs de néon/hologramme).
+  2. Binarisation automatique par la méthode d'Otsu.
+  3. Détection de la couleur du fond par analyse des pixels de bordure du ROI : si le fond est sombre (`> 50 %` de pixels noirs sur le contour), inversion automatique des pixels pour fournir à Tesseract du texte noir sur fond blanc.
+  4. Si la confiance `meanConfidence` de Tesseract sur cette première passe est faible (`< 65 %`), exécution automatique d'une seconde passe sur la polarité opposée et sélection du résultat ayant la confiance maximale.
+- **Conséquences** :
+  - Expérience utilisateur 100 % transparente ("Point & Scan").
+  - Très faible surcoût CPU : la seconde passe n'est déclenchée qu'en cas d'incertitude sur une petite image déjà découpée au ROI.

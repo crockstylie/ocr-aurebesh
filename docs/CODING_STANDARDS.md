@@ -25,7 +25,7 @@
 - **Injection des Dispatchers** :
   - Ne jamais coder en dur `Dispatchers.IO` ou `Dispatchers.Default` à l'intérieur des classes métier/repositories ; les passer au constructeur (avec valeur par défaut) pour faciliter les tests unitaires.
 - **Isolation du Main Thread (Zéro ANR)** :
-  - **Strictement interdit sur le Main Thread** : copie des assets `.traineddata`, initialisation de `TessBaseAPI`, conversion/découpage de `Bitmap`, exécution OCR (`utF8Text`), et requêtes E/S bloquantes.
+  - **Strictement interdit sur le Main Thread** : copie des assets `.traineddata`, initialisation de `TessBaseAPI`, conversion/découpage/binarisation de `Bitmap`, exécution OCR (`utF8Text`), et requêtes E/S bloquantes.
 - **Accès séquentiel à Tesseract** :
   - Protéger toutes les interactions avec l'instance `TessBaseAPI` via un `Mutex` (`kotlinx.coroutines.sync.Mutex`) ou un `CoroutineDispatcher` limité à 1 thread (`Dispatchers.Default.limitedParallelism(1)`).
 
@@ -37,6 +37,8 @@
   - Séparer systématiquement chaque écran en deux niveaux :
     1. `ScannerRoute(viewModel: ScannerViewModel)` : collecte les `StateFlow` avec `collectAsStateWithLifecycle()` et câble la navigation/permissions.
     2. `ScannerScreen(uiState: ScannerUiState, onEvent: (ScannerUiEvent) -> Unit, modifier: Modifier = Modifier)` : Composable **stateless**, pur, facile à prévisualiser (`@Preview`) et à tester.
+- **Zéro réglage technique exposé à l'utilisateur** :
+  - L'interface de scan doit rester épurée : ne pas exposer de sliders de seuillage ou de switch "texte clair / fond foncé". Toute l'adaptation d'image se fait automatiquement dans `AutoImagePreprocessor` et `AurebeshOcrEngine`.
 - **Stabilité & Performance de Recomposition** :
   - Annoter les classes d'état avec `@Immutable` ou `@Stable` dès lors qu'elles contiennent des types que le compilateur Compose ne peut pas inférer comme stables.
   - Toujours fournir une `key` unique dans les `LazyColumn` (`items(items = historyList, key = { it.id })`).
@@ -48,15 +50,15 @@
 
 ---
 
-## 4. CameraX & Traitement d'Image
+## 4. CameraX & Prétraitement d'Image Automatique
 
 - **Cycle de vie** :
   - Lier le `ProcessCameraProvider` au `LocalLifecycleOwner.current` dans un `LaunchedEffect` ou via un contrôleur dédié, et appeler `unbindAll()` avant un nouveau bind.
 - **Gestion stricte des `ImageProxy`** :
   - Toujours utiliser `imageProxy.use { proxy -> ... }` dans `ImageAnalysis.Analyzer.analyze()` pour garantir la fermeture du buffer même en cas d'exception.
-- **Optimisation mémoire des `Bitmap`** :
-  - Découper uniquement la région d'intérêt (ROI correspondant au rectangle de visée) avant de l'envoyer à Tesseract.
-  - Éviter d'allouer de grands tableaux à chaque frame si un buffer peut être réutilisé ou si la frame est ignorée.
+- **Optimisation CPU/Mémoire du `AutoImagePreprocessor`** :
+  - Découper **d'abord** la région d'intérêt (ROI correspondant au rectangle de visée) avant d'exécuter l'étirement d'histogramme et la binarisation d'Otsu afin de ne traiter qu'un petit nombre de pixels.
+  - Manipuler les pixels via un `IntArray` (`bitmap.getPixels(...)` / `bitmap.setPixels(...)`) plutôt que des appels répétés à `getPixel(x, y)` (gain de performance d'un facteur 10x à 50x en Kotlin).
 
 ---
 
@@ -70,4 +72,4 @@
   - Les opérations d'écriture (`@Insert`, `@Update`, `@Delete`, `@Query` ponctuel) sont toujours déclarées `suspend`.
 - **Schéma & Migrations** :
   - Toujours typer explicitement les noms de tables (`tableName = "scan_history"`) et de colonnes (`@ColumnInfo(name = "...")`).
-  - Indexer les colonnes fréquemment filtrées ou triées (ex. `timestamp`, `isFavorite`).
+  - Indexer les colonnes fréquemment filtrées ou triées (ex. `created_at`, `is_favorite`).

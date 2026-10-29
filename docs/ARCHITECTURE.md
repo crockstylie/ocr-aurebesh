@@ -1,16 +1,28 @@
 # ARCHITECTURE.md — Architecture & Cartographie du Code
 
-> Ce document décrit l'architecture cible, le flux de données et l'emplacement exact des fichiers du projet **OCRAurebesh** afin d'éviter toute exploration inutile du codebase.
+> Ce document décrit le Use Case de référence, l'architecture cible, le flux de données et l'emplacement exact des fichiers du projet **OCRAurebesh** afin d'éviter toute exploration inutile du codebase.
 
 ---
 
-## 1. Vue d'Ensemble (Clean MVVM, UDF & Persistance Locale)
+## 1. Use Case Nominal Validé
+
+- **Acteur** : Utilisateur souhaitant traduire une inscription en alphabet Aurebesh (écran de jeu vidéo lumineux, affiche, parc d'attractions, support imprimé) vers l'alphabet latin.
+- **Parcours nominal (Zéro réglage manuel)** :
+  1. L'utilisateur ouvre **OCRAurebesh** et pointe la caméra vers l'inscription en Aurebesh en l'alignant dans le cadre de visée (ROI).
+  2. Le pipeline d'analyse détecte **automatiquement et de façon transparente** la polarité (texte clair/néon sur fond sombre ou texte sombre sur fond clair) ainsi que le contraste, sans aucun réglage requis de la part de l'utilisateur.
+  3. La traduction en lettres latines et son score de confiance s'affichent en direct sous le viseur.
+  4. L'utilisateur peut figer/mettre en pause le scan, copier le texte ou le sauvegarder dans l'historique local (Room) et ses favoris.
+
+---
+
+## 2. Vue d'Ensemble (Clean MVVM, UDF & Persistance Locale)
 
 ```mermaid
 flowchart LR
-    Camera["CameraX (Preview + ImageAnalysis)"] -->|ImageProxy / Bitmap| Analyzer["AurebeshImageAnalyzer"]
-    Analyzer -->|Bitmap ROI| OcrEngine["AurebeshOcrEngine (TessBaseAPI)"]
-    OcrEngine -->|OcrResult| VM["ScannerViewModel"]
+    Camera["CameraX (Preview + ImageAnalysis)"] -->|ImageProxy| Analyzer["AurebeshImageAnalyzer"]
+    Analyzer -->|Bitmap ROI| Preprocessor["AutoImagePreprocessor (Otsu + Polarité Auto)"]
+    Preprocessor -->|Bitmap Normalisé + Inversé| OcrEngine["AurebeshOcrEngine (TessBaseAPI)"]
+    OcrEngine -->|OcrResult (Meilleure Confiance)| VM["ScannerViewModel"]
     VM <-->|Sauvegarde / Flow Historique| Repo["ScanHistoryRepository"]
     Repo <-->|Suspend / Flow| Dao["ScanHistoryDao (Room)"]
     VM -->|StateFlow<ScannerUiState>| UI["Compose UI (ScannerScreen / History)"]
@@ -19,7 +31,7 @@ flowchart LR
 
 ---
 
-## 2. Organisation des Packages (`fr.antoinehory.ocraurebesh`)
+## 3. Organisation des Packages (`fr.antoinehory.ocraurebesh`)
 
 ```text
 fr.antoinehory.ocraurebesh/
@@ -30,7 +42,7 @@ fr.antoinehory.ocraurebesh/
 │   ├── scanner/                 # Écran principal de scan (ScannerScreen, ScannerViewModel, ScannerUiState)
 │   └── history/                 # Écran / BottomSheet d'historique et favoris des traductions sauvegardées
 ├── camera/                      # Intégration CameraX et ImageAnalysis.Analyzer
-├── ocr/                         # Gestion des assets tessdata, prétraitement Bitmap et wrapper TessBaseAPI
+├── ocr/                         # Gestion des assets tessdata, AutoImagePreprocessor et AurebeshOcrEngine
 ├── data/
 │   ├── local/
 │   │   ├── AppDatabase.kt       # Instance RoomDatabase
@@ -42,17 +54,17 @@ fr.antoinehory.ocraurebesh/
 
 ---
 
-## 3. Cartographie des Fichiers Actuels
+## 4. Cartographie des Fichiers Actuels
 
 *Mettre à jour ce tableau à chaque création, modification structurante ou suppression de fichier.*
 
 | Chemin relatif | Responsabilité | Statut |
 | :--- | :--- | :--- |
 | `AGENTS.md` | Point d'entrée IA, index documentaire, catalogue de skills et garde-fous | Actif |
-| `docs/ARCHITECTURE.md` | Architecture MVVM/UDF, pipeline OCR/Room et cartographie des fichiers | Actif |
+| `docs/ARCHITECTURE.md` | Use Case, architecture MVVM/UDF, pipeline OCR auto-adaptatif et cartographie | Actif |
 | `docs/CODING_STANDARDS.md` | Standards de code Kotlin/Compose et bonnes pratiques CameraX/Tesseract/Room | Actif |
-| `docs/ROADMAP.md` | Suivi d'avancement par phases | Actif |
-| `docs/DECISIONS.md` | Journal des décisions d'architecture (ADR) | Actif |
+| `docs/ROADMAP.md` | Suivi d'avancement par phases (incluant génération `.traineddata`) | Actif |
+| `docs/DECISIONS.md` | Journal des décisions d'architecture (ADR-001 à ADR-006) | Actif |
 | `build.gradle.kts` | Configuration Gradle racine (plugins Android Application, Kotlin Compose, KSP) | Actif |
 | `gradle/libs.versions.toml` | Catalogue des versions (CameraX, Accompanist, Tesseract, Room, KSP) | Actif |
 | `app/build.gradle.kts` | Configuration du module `:app` (minSdk 29, targetSdk 37, Compose, KSP, Room) | Actif |
@@ -64,26 +76,27 @@ fr.antoinehory.ocraurebesh/
 
 ---
 
-## 4. Pipeline OCR & Caméra (Spécifications Techniques)
+## 5. Pipeline OCR Auto-Adaptatif & Caméra (Spécifications Techniques)
 
-1. **Initialisation des données Tesseract (`tessdata`)** :
-   - `TessBaseAPI` requiert un chemin sur le système de fichiers local (et non directement dans les `assets` compressés de l'APK).
-   - Au démarrage, copier le fichier `.traineddata` depuis `app/src/main/assets/tessdata/` vers `context.filesDir/tesseract/tessdata/` s'il n'est pas déjà présent.
-   - Initialiser `TessBaseAPI().init(dataPath, languageCode)` où `dataPath` est le dossier parent contenant `tessdata/` (`context.filesDir/tesseract/`).
+1. **Génération & Initialisation des données Tesseract (`tessdata`)** :
+   - Fichier modèle cible : `app/src/main/assets/tessdata/aurebesh.traineddata`.
+   - Au démarrage, `TessDataManager` copie `aurebesh.traineddata` vers `context.filesDir/tesseract/tessdata/` s'il est absent.
+   - `TessBaseAPI` est initialisé avec `init(dataPath, "aurebesh")` et une whitelist de caractères latins (`A-Z0-9.,!?-' `).
 
-2. **Capture & Prétraitement (`camera/` -> `ocr/`)** :
-   - Utiliser `ImageAnalysis` avec `STRATEGY_KEEP_ONLY_LATEST`.
-   - Convertir l'`ImageProxy` en `Bitmap`, appliquer la rotation correspondant à `imageProxy.imageInfo.rotationDegrees`.
-   - Découper (crop) uniquement la zone cible (viseur / ROI) pour accélérer drastiquement l'OCR et éviter le bruit visuel autour du texte Aurebesh.
-   - Fermer immédiatement l'`ImageProxy` via `use {}`.
+2. **Capture & Découpage ROI (`camera/` -> `ocr/`)** :
+   - `ImageAnalysis` configuré en `STRATEGY_KEEP_ONLY_LATEST`.
+   - Conversion de l'`ImageProxy` en `Bitmap`, rotation selon `imageProxy.imageInfo.rotationDegrees`, et découpage strict de la zone de visée (ROI). Fermeture immédiate de l'`ImageProxy` via `use {}`.
 
-3. **Reconnaissance & Restitution (`ocr/` -> `ui/`)** :
-   - Exécuter `tessBaseApi.setImage(croppedBitmap)` puis `tessBaseApi.utF8Text` sur un thread d'arrière-plan séquentiel.
-   - Publier le texte reconnu et le niveau de confiance (`meanConfidence`) dans `ScannerUiState`.
+3. **Prétraitement Automatique Transparent (`AutoImagePreprocessor`)** :
+   - **Aucun réglage manuel requis par l'utilisateur** pour gérer les textes clairs sur fond sombre (écrans, néons) ou sombres sur fond clair :
+     1. **Conversion en niveaux de gris & Normalisation Min-Max** : étirement de l'histogramme de luminance sur `[0..255]` pour maximiser le contraste, quelle que soit la couleur du texte (bleu hologramme, jaune, rouge, blanc).
+     2. **Binarisation adaptative (Méthode d'Otsu)** : calcul automatique du seuil optimal séparant le fond et les glyphes.
+     3. **Détection automatique de la polarité par les bordures** : analyse de la proportion de pixels sombres sur le périmètre (bordures) du rectangle ROI. Si les bordures sont majoritairement sombres (fond foncé avec texte clair), le `Bitmap` binarisé est automatiquement inversé pour présenter à Tesseract du texte noir sur fond blanc.
+     4. **Double-passe de sécurité (Fallback sur confiance)** : si le score `meanConfidence` retourné par Tesseract sur la polarité détectée est inférieur au seuil de fiabilité (ex. `< 65 %`), `AurebeshOcrEngine` teste automatiquement la version inversée dans la même passe et conserve le résultat ayant le `meanConfidence` le plus élevé.
 
 ---
 
-## 5. Persistance Locale avec Room (`data/local/`)
+## 6. Persistance Locale avec Room (`data/local/`)
 
 - **Entité principale (`ScanHistoryEntity`)** :
   - `id: Long` (Clé primaire auto-générée)

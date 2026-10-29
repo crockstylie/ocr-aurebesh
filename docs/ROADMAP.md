@@ -15,32 +15,43 @@ Légende : `[x]` Terminé | `[/]` En cours | `[ ]` À faire
   - Room (`2.8.5`) + plugin KSP (`2.3.12`)
 - [x] Déclaration de la permission `CAMERA` et de `<uses-feature android:name="android.hardware.camera" />` dans `AndroidManifest.xml`
 - [x] Mise en place de la documentation "Source de Vérité" (`AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/CODING_STANDARDS.md`, `docs/ROADMAP.md`, `docs/DECISIONS.md`) avec référencement des Skills Android Studio
+- [x] Validation du Use Case nominal et de l'architecture auto-adaptative (polarité/contraste automatiques)
 
-## Phase 2 : Persistance Locale avec Room (`data/local/` & `domain/`)
+## Phase 2 : Génération & Intégration du Modèle `aurebesh.traineddata`
+- [ ] Récupération d'une police Aurebesh libre de droits (`.ttf`/`.otf`) et préparation du corpus d'entraînement (`A-Z`, `0-9`, ponctuation)
+- [ ] Script/outillage de génération synthétique des images d'entraînement (`.tif` + `.box` / `.gt.txt`) et compilation du modèle `aurebesh.traineddata` pour Tesseract 4/5
+- [ ] Intégration du fichier généré `aurebesh.traineddata` dans `app/src/main/assets/tessdata/`
+
+## Phase 3 : Persistance Locale avec Room (`data/local/` & `domain/`)
 - [ ] Création du modèle métier `ScanRecord` dans `domain/`
 - [ ] Création de l'entité Room `ScanHistoryEntity` et de ses fonctions de mapping vers `ScanRecord`
 - [ ] Création du DAO `ScanHistoryDao` (observation réactive via `Flow`, insertion, suppression, gestion des favoris)
 - [ ] Création de `AppDatabase` (`RoomDatabase`) et du `ScanHistoryRepository`
 
-## Phase 3 : Modèle Tesseract & Couche OCR (`ocr/`)
-- [ ] Intégration du fichier modèle `.traineddata` (Aurebesh) dans `app/src/main/assets/tessdata/`
-- [ ] Création du gestionnaire d'assets (`TessDataManager`) pour copier `.traineddata` vers `filesDir/tesseract/tessdata/`
-- [ ] Création du moteur OCR (`AurebeshOcrEngine`) encapsulant `TessBaseAPI` de manière thread-safe (`Mutex` / dispatcher dédié) et gérant son cycle de vie (`recycle()`)
-- [ ] Utilitaires de prétraitement d'image (rotation, découpage de la zone de visée / ROI, binarisation/contraste si nécessaire)
+## Phase 4 : Couche OCR & Prétraitement Automatique (`ocr/`)
+- [ ] Création du gestionnaire d'assets (`TessDataManager`) pour copier `aurebesh.traineddata` vers `filesDir/tesseract/tessdata/`
+- [ ] Création de `AutoImagePreprocessor` :
+  - Découpage de la région d'intérêt (ROI) et rotation
+  - Normalisation de contraste (étirement d'histogramme Min-Max en niveaux de gris)
+  - Binarisation automatique (algorithme d'Otsu)
+  - Détection automatique de polarité (analyse des bordures du ROI pour inverser automatiquement le texte clair sur fond sombre)
+- [ ] Création du moteur OCR (`AurebeshOcrEngine`) :
+  - Encapsulation thread-safe de `TessBaseAPI` (`Mutex` / dispatcher dédié) et cycle de vie (`recycle()`)
+  - Logique de double-passe transparente (fallback sur l'image inversée si `meanConfidence` est faible, en retenant le meilleur score)
 
-## Phase 4 : Caméra & Permissions (`camera/` & `ui/`)
+## Phase 5 : Caméra & Permissions (`camera/` & `ui/`)
 - [ ] Écran/composant de demande de permission caméra avec Accompanist (`rememberPermissionState`) et gestion des cas de refus (rationale / redirection vers les paramètres)
 - [ ] Composant `CameraPreview` intégrant `PreviewView` et liant `Preview` + `ImageAnalysis` au `LifecycleOwner`
-- [ ] Implémentation de l'`ImageAnalysis.Analyzer` pour extraire les frames sans bloquer le flux (`STRATEGY_KEEP_ONLY_LATEST`)
+- [ ] Implémentation de `AurebeshImageAnalyzer` (`ImageAnalysis.Analyzer`) avec `STRATEGY_KEEP_ONLY_LATEST`
 
-## Phase 5 : Interface Utilisateur & Expérience de Scan (`ui/scanner/` & `ui/history/`)
+## Phase 6 : Interface Utilisateur & Expérience de Scan (`ui/scanner/` & `ui/history/`)
 - [ ] Définition de `ScannerUiState`, `ScannerUiEvent` et `ScannerViewModel`
 - [ ] Superposition visuelle (Overlay) avec cadre de visée (ROI) pour cibler le texte Aurebesh
-- [ ] Affichage en temps réel (ou au déclenchement) du texte traduit et de l'indicateur de confiance
+- [ ] Affichage en temps réel du texte traduit et de l'indicateur de confiance (sans réglages complexes pour l'utilisateur)
 - [ ] Sauvegarde des traductions dans Room et écran/volet d'historique & favoris
 - [ ] Options ergonomiques (pause/gel du scan, lampe torche, copie du texte traduit dans le presse-papiers)
 
-## Phase 6 : Stabilisation, Tests & Optimisation
-- [ ] Tests unitaires de la logique de traduction, des mappers Room et du `ViewModel`
+## Phase 7 : Stabilisation, Tests & Optimisation
+- [ ] Tests unitaires de `AutoImagePreprocessor` (vérification de la détection clair/sombre et d'Otsu), des mappers Room et du `ViewModel`
 - [ ] Vérification de l'absence de fuites mémoire (`ImageProxy`, `Bitmap`, `TessBaseAPI`)
-- [ ] Ajustements de performance Compose et du prétraitement d'image en conditions réelles
+- [ ] Ajustements de performance Compose et validation sur des images Aurebesh réelles (écrans et imprimés)
