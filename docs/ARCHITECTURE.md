@@ -72,7 +72,7 @@ fr.antoinehory.ocraurebesh/
 | `app/src/main/assets/tessdata/aurebesh.traineddata` | Modèle LSTM Tesseract 5 entraîné sur mesure (Regular, Bold, Condensed, quantifié 395 Ko) | Actif |
 | `tools/tessdata-trainer/Dockerfile` | Image Docker Ubuntu 24.04 + Tesseract 5 + Python pour l'entraînement du modèle | Actif |
 | `tools/tessdata-trainer/train_aurebesh.py` | Script reproductible de génération synthétique et d'entraînement LSTM Aurebesh | Actif |
-| `app/src/main/java/fr/antoinehory/ocraurebesh/MainActivity.kt` | Activité hôte Jetpack Compose | Squelette initial |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/MainActivity.kt` | Activité hôte Jetpack Compose branchant `ScannerViewModel` et `ScannerRoute` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/domain/ScanRecord.kt` | Modèle métier immuable (`@Immutable`) d'un scan Aurebesh | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/domain/OcrResult.kt` | Interface scellée (`Success`, `Empty`, `Error`) résultat d'une analyse OCR | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/TessDataManager.kt` | Extraction atomique de `aurebesh.traineddata` vers `filesDir/tesseract/tessdata/` | Actif |
@@ -81,6 +81,11 @@ fr.antoinehory.ocraurebesh/
 | `app/src/main/java/fr/antoinehory/ocraurebesh/camera/AurebeshImageAnalyzer.kt` | `ImageAnalysis.Analyzer` extrayant le ROI avec fermeture garantie de l'`ImageProxy` (`use {}`) | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/camera/CameraPreview.kt` | Composable CameraX (`PreviewView` + `ImageAnalysis` `STRATEGY_KEEP_ONLY_LATEST` + Torche) | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/CameraPermissionGate.kt` | Garde-barrière Accompanist Permissions (`CAMERA`) avec gestion rationale et refus permanent | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/ScannerOverlay.kt` | Overlay du viseur HUD dessiné avec `Modifier.drawWithCache` | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerUiState.kt` | `ScannerUiState` et `ScannerUiEvent` (pattern UDF) | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerViewModel.kt` | `ViewModel` orchestrant l'OCR, la caméra et l'historique Room | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerScreen.kt` | `ScannerRoute` et `ScannerScreen` Edge-to-Edge avec carte de traduction et `@Preview` | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/history/ScanHistorySheet.kt` | `ModalBottomSheet` d'historique et favoris avec `LazyColumn` optimisée (`key` + `contentType`) | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/data/local/entity/ScanHistoryEntity.kt` | Entité Room `scan_history` et fonctions de mapping `toDomain()` / `toEntity()` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/data/local/dao/ScanHistoryDao.kt` | Interface `@Dao` réactive (`Flow` + `suspend`) pour l'historique et les favoris | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/data/local/AppDatabase.kt` | Singleton `RoomDatabase` (`ocr_aurebesh.db`) | Actif |

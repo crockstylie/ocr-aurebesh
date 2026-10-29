@@ -45,11 +45,11 @@ Légende : `[x]` Terminé | `[/]` En cours | `[ ]` À faire
 - [x] Implémentation de `AurebeshImageAnalyzer` (`ImageAnalysis.Analyzer`) avec `STRATEGY_KEEP_ONLY_LATEST`
 
 ## Phase 6 : Interface Utilisateur & Expérience de Scan (`ui/scanner/` & `ui/history/`)
-- [ ] Définition de `ScannerUiState`, `ScannerUiEvent` et `ScannerViewModel`
-- [ ] Superposition visuelle (Overlay) avec cadre de visée (ROI) pour cibler le texte Aurebesh
-- [ ] Affichage en temps réel du texte traduit et de l'indicateur de confiance (sans réglages complexes pour l'utilisateur)
-- [ ] Sauvegarde des traductions dans Room et écran/volet d'historique & favoris
-- [ ] Options ergonomiques (pause/gel du scan, lampe torche, copie du texte traduit dans le presse-papiers)
+- [x] Définition de `ScannerUiState`, `ScannerUiEvent` et `ScannerViewModel`
+- [x] Superposition visuelle (Overlay) avec cadre de visée (ROI) pour cibler le texte Aurebesh
+- [x] Affichage en temps réel du texte traduit et de l'indicateur de confiance (sans réglages complexes pour l'utilisateur)
+- [x] Sauvegarde des traductions dans Room et écran/volet d'historique & favoris
+- [x] Options ergonomiques (pause/gel du scan, lampe torche, copie du texte traduit dans le presse-papiers)
 
 ## Phase 7 : Stabilisation, Tests & Optimisation
 - [ ] Tests unitaires de `AutoImagePreprocessor` (vérification de la détection clair/sombre et d'Otsu), des mappers Room et du `ViewModel`
