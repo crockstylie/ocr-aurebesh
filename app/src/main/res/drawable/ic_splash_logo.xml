@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Médaillon HUD circulaire dans la zone centrale (rayon 36 sur viewport 108) -->
+    <path android:pathData="M54,54m-36,0a36,36 0,1 1,72 0a36,36 0,1 1,-72 0">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="54"
+                android:centerY="54"
+                android:gradientRadius="36"
+                android:type="radial">
+                <item
+                    android:color="#FF112940"
+                    android:offset="0.0" />
+                <item
+                    android:color="#FF081320"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Cercle extérieur fin cyan -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,54m-35,0a35,35 0,1 1,70 0a35,35 0,1 1,-70 0"
+        android:strokeWidth="1.2"
+        android:strokeColor="#4D00E5FF" />
+
+    <!-- 4 équerres de visée HUD Cyan -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M33,43 L33,36 Q33,33 36,33 L43,33"
+        android:strokeWidth="2.6"
+        android:strokeColor="#00E5FF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M65,33 L72,33 Q75,33 75,36 L75,43"
+        android:strokeWidth="2.6"
+        android:strokeColor="#00E5FF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M33,65 L33,72 Q33,75 36,75 L43,75"
+        android:strokeWidth="2.6"
+        android:strokeColor="#00E5FF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M65,75 L72,75 Q75,75 75,72 L75,65"
+        android:strokeWidth="2.6"
+        android:strokeColor="#00E5FF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- Glyphes géométriques sci-fi originaux -->
+    <path
+        android:fillColor="#F0F6FC"
+        android:pathData="M40,40 L52,40 L47,46.5 L61,46.5 L67,40 L70,43.5 L62.5,51.5 L40,51.5 Z" />
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M55,39.5 L61.5,39.5 L58.5,43.5 L52,43.5 Z" />
+
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M40,56.5 L62.5,56.5 L70,64.5 L67,68 L61,61.5 L47,61.5 L52,68 L40,68 Z" />
+    <path
+        android:fillColor="#F0F6FC"
+        android:pathData="M52,64.5 L58.5,64.5 L61.5,68.5 L55,68.5 Z" />
+
+    <!-- Halo + faisceau laser de scan ambre -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M29,54 L79,54"
+        android:strokeWidth="4.5"
+        android:strokeColor="#44FFB300"
+        android:strokeLineCap="round" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M30,54 L78,54"
+        android:strokeWidth="1.8"
+        android:strokeColor="#FFB300"
+        android:strokeLineCap="round" />
+</vector>

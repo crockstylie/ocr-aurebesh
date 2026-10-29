@@ -61,6 +61,7 @@ import fr.antoinehory.ocraurebesh.ui.components.HudTopSnackbarHost
 import fr.antoinehory.ocraurebesh.ui.components.ScannerOverlay
 import fr.antoinehory.ocraurebesh.ui.generator.AurebeshGeneratorActivity
 import fr.antoinehory.ocraurebesh.ui.history.ScanHistorySheet
+import fr.antoinehory.ocraurebesh.ui.info.InfoActivity
 import fr.antoinehory.ocraurebesh.ui.theme.HudAmber
 import fr.antoinehory.ocraurebesh.ui.theme.HudAmberDim
 import fr.antoinehory.ocraurebesh.ui.theme.HudCyan
@@ -98,6 +99,9 @@ fun ScannerRoute(
                     )
                 )
             },
+            onOpenInfo = {
+                context.startActivity(InfoActivity.createIntent(context))
+            },
             cameraPreviewContent = { previewModifier ->
                 CameraPreview(
                     analyzer = viewModel.imageAnalyzer,
@@ -122,7 +126,8 @@ fun ScannerRoute(
 
 /**
  * Écran principal de scan Aurebesh (stateless), conçu en Edge-to-Edge et adaptatif
- * (Portrait vs Paysage). Un tap n'importe où sur le flux vidéo fige ou reprend l'image.
+ * (Portrait vs Paysage). Un tap n'importe où sur le flux vidéo fige ou reprend l'image
+ * (indiqué visuellement par le changement de couleur du viseur et du bandeau).
  */
 @Composable
 fun ScannerScreen(
@@ -130,6 +135,7 @@ fun ScannerScreen(
     onEvent: (ScannerUiEvent) -> Unit,
     onCopyText: (String) -> Unit,
     onOpenGenerator: (String) -> Unit,
+    onOpenInfo: () -> Unit = {},
     cameraPreviewContent: @Composable (Modifier) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -169,6 +175,7 @@ fun ScannerScreen(
                     onEvent = onEvent,
                     onCopyText = onCopyText,
                     onOpenGenerator = { onOpenGenerator(uiState.recognizedText) },
+                    onOpenInfo = onOpenInfo,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
@@ -181,6 +188,7 @@ fun ScannerScreen(
                     onEvent = onEvent,
                     onCopyText = onCopyText,
                     onOpenGenerator = { onOpenGenerator(uiState.recognizedText) },
+                    onOpenInfo = onOpenInfo,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
@@ -226,9 +234,9 @@ fun ScannerScreen(
 
 /**
  * Mise en page Portrait :
- * - En haut : pilule d'état compacte + boutons ronds à icônes.
+ * - En haut : bouton Info à gauche + boutons ronds à icônes à droite (Studio, Torche, Historique).
  * - Au centre (`weight(1f)`) : viseur HUD occupant tout l'espace libre sans toucher aux boutons.
- * - En bas : dock flottant compact (1 seule ligne d'icônes).
+ * - En bas : dock flottant épuré (sans bouton Play/Pause redondant).
  */
 @Composable
 private fun ScannerPortraitLayout(
@@ -236,6 +244,7 @@ private fun ScannerPortraitLayout(
     onEvent: (ScannerUiEvent) -> Unit,
     onCopyText: (String) -> Unit,
     onOpenGenerator: () -> Unit,
+    onOpenInfo: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -243,12 +252,10 @@ private fun ScannerPortraitLayout(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         ScannerTopHudBar(
-            isOcrReady = uiState.isOcrReady,
-            isPaused = uiState.isPaused,
             isFlashAvailable = uiState.isFlashAvailable,
             isTorchEnabled = uiState.isTorchEnabled,
             historyCount = uiState.historyRecords.size,
-            onTogglePause = { onEvent(ScannerUiEvent.TogglePause) },
+            onOpenInfo = onOpenInfo,
             onToggleTorch = { onEvent(ScannerUiEvent.ToggleTorch) },
             onOpenGenerator = onOpenGenerator,
             onOpenHistory = { onEvent(ScannerUiEvent.SetHistorySheetVisible(true)) },
@@ -265,7 +272,6 @@ private fun ScannerPortraitLayout(
         TranslationHudDock(
             recognizedText = uiState.recognizedText,
             isPaused = uiState.isPaused,
-            onTogglePause = { onEvent(ScannerUiEvent.TogglePause) },
             onCopyScan = {
                 if (uiState.recognizedText.isNotEmpty()) {
                     onCopyText(uiState.recognizedText)
@@ -279,7 +285,7 @@ private fun ScannerPortraitLayout(
 
 /**
  * Mise en page Paysage :
- * - À gauche (`weight(1f)`) : grand viseur caméra totalement dégagé avec pilule d'état discrète.
+ * - À gauche (`weight(1f)`) : grand viseur caméra totalement dégagé.
  * - À droite (`268.dp`) : colonne latérale regroupant les boutons d'action ronds et la carte de texte traduit.
  */
 @Composable
@@ -288,6 +294,7 @@ private fun ScannerLandscapeLayout(
     onEvent: (ScannerUiEvent) -> Unit,
     onCopyText: (String) -> Unit,
     onOpenGenerator: () -> Unit,
+    onOpenInfo: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -306,15 +313,6 @@ private fun ScannerLandscapeLayout(
                 hasRecognizedText = uiState.recognizedText.isNotEmpty(),
                 modifier = Modifier.fillMaxSize(),
             )
-
-            HudStatusPill(
-                isOcrReady = uiState.isOcrReady,
-                isPaused = uiState.isPaused,
-                onClick = { onEvent(ScannerUiEvent.TogglePause) },
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(14.dp),
-            )
         }
 
         // Panneau latéral HUD compact à droite
@@ -326,24 +324,22 @@ private fun ScannerLandscapeLayout(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                HudCircleIconButton(
+                    icon = HudIcons.Info,
+                    contentDescription = "Informations",
+                    tint = HudTextPrimary,
+                    onClick = onOpenInfo,
+                )
+
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HudCircleIconButton(
                         icon = HudIcons.Edit,
                         contentDescription = "Studio Aurebesh",
                         tint = HudCyan,
                         onClick = onOpenGenerator,
-                    )
-
-                    HudCircleIconButton(
-                        icon = if (uiState.isPaused) HudIcons.Play else HudIcons.Pause,
-                        contentDescription = if (uiState.isPaused) "Reprendre" else "Figer",
-                        isActive = uiState.isPaused,
-                        activeColor = HudAmber,
-                        activeBgColor = HudAmberDim,
-                        onClick = { onEvent(ScannerUiEvent.TogglePause) },
                     )
 
                     if (uiState.isFlashAvailable) {
@@ -374,7 +370,14 @@ private fun ScannerLandscapeLayout(
                     .fillMaxWidth(),
                 shape = RoundedCornerShape(22.dp),
                 color = HudGlassSurface,
-                border = BorderStroke(1.dp, if (hasText) HudGlassBorder else HudSubtleBorder),
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = when {
+                        uiState.isPaused -> HudAmber.copy(alpha = 0.55f)
+                        hasText -> HudGlassBorder
+                        else -> HudSubtleBorder
+                    },
+                ),
             ) {
                 Column(
                     modifier = Modifier
@@ -438,12 +441,10 @@ private fun ScannerLandscapeLayout(
 
 @Composable
 private fun ScannerTopHudBar(
-    isOcrReady: Boolean,
-    isPaused: Boolean,
     isFlashAvailable: Boolean,
     isTorchEnabled: Boolean,
     historyCount: Int,
-    onTogglePause: () -> Unit,
+    onOpenInfo: () -> Unit,
     onToggleTorch: () -> Unit,
     onOpenGenerator: () -> Unit,
     onOpenHistory: () -> Unit,
@@ -454,10 +455,11 @@ private fun ScannerTopHudBar(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        HudStatusPill(
-            isOcrReady = isOcrReady,
-            isPaused = isPaused,
-            onClick = onTogglePause,
+        HudCircleIconButton(
+            icon = HudIcons.Info,
+            contentDescription = "Informations",
+            tint = HudTextPrimary,
+            onClick = onOpenInfo,
         )
 
         Row(
@@ -491,64 +493,14 @@ private fun ScannerTopHudBar(
 }
 
 /**
- * Pilule d'état ultra-compacte avec voyant lumineux coloré (zéro débordement de texte).
- */
-@Composable
-private fun HudStatusPill(
-    isOcrReady: Boolean,
-    isPaused: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val dotColor = when {
-        !isOcrReady -> HudCyan
-        isPaused -> HudAmber
-        else -> HudEmerald
-    }
-    val label = when {
-        !isOcrReady -> "Init..."
-        isPaused -> "Figé"
-        else -> "Actif"
-    }
-
-    Surface(
-        modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(50),
-        color = HudGlassSurface,
-        border = BorderStroke(1.dp, dotColor.copy(alpha = 0.45f)),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .background(color = dotColor, shape = CircleShape)
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = HudTextPrimary,
-                maxLines = 1,
-            )
-        }
-    }
-}
-
-/**
  * Bandeau inférieur ("Dock") épuré en mode Portrait :
- * - Affiche le texte traduit à gauche et des icônes d'action rondes à droite.
+ * - Affiche le texte traduit et les icônes d'action (Copier, Sauvegarder, Effacer).
+ * - L'état figé est reflété par la bordure ambrée (et les coins du viseur), sans bouton Play/Pause.
  */
 @Composable
 private fun TranslationHudDock(
     recognizedText: String,
     isPaused: Boolean,
-    onTogglePause: () -> Unit,
     onCopyScan: () -> Unit,
     onSaveScan: () -> Unit,
     onClearScan: () -> Unit,
@@ -571,26 +523,16 @@ private fun TranslationHudDock(
         ),
     ) {
         if (!hasText) {
-            Row(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = "Scannez un texte Aurebesh...",
                     style = MaterialTheme.typography.bodyMedium,
                     color = HudTextSecondary,
-                )
-
-                HudCircleIconButton(
-                    icon = if (isPaused) HudIcons.Play else HudIcons.Pause,
-                    contentDescription = if (isPaused) "Reprendre" else "Figer",
-                    isActive = isPaused,
-                    activeColor = HudAmber,
-                    activeBgColor = HudAmberDim,
-                    onClick = onTogglePause,
                 )
             }
         } else {
@@ -644,14 +586,6 @@ private fun TranslationHudDock(
                         contentDescription = "Effacer",
                         tint = HudTextSecondary,
                         onClick = onClearScan,
-                    )
-                    HudCircleIconButton(
-                        icon = if (isPaused) HudIcons.Play else HudIcons.Pause,
-                        contentDescription = if (isPaused) "Reprendre" else "Figer",
-                        isActive = isPaused,
-                        activeColor = HudAmber,
-                        activeBgColor = HudAmberDim,
-                        onClick = onTogglePause,
                     )
                 }
             }

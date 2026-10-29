@@ -41,6 +41,7 @@ fr.antoinehory.ocraurebesh/
 │   ├── components/              # Composants UI réutilisables (ScannerOverlay, CameraPermissionGate, HudIcons)
 │   ├── scanner/                 # Écran principal de scan (ScannerScreen, ScannerViewModel, ScannerUiState)
 │   ├── generator/               # Studio / Générateur Aurebesh (AurebeshGeneratorActivity, AurebeshGeneratorScreen, AurebeshImageExporter)
+│   ├── info/                    # Écran d'informations développeur, réseaux sociaux et don PayPal (InfoActivity, InfoScreen)
 │   └── history/                 # Écran / BottomSheet d'historique et favoris des traductions sauvegardées
 ├── camera/                      # Intégration CameraX et ImageAnalysis.Analyzer
 ├── ocr/                         # Gestion des assets tessdata, AutoImagePreprocessor et AurebeshOcrEngine
@@ -67,9 +68,12 @@ fr.antoinehory.ocraurebesh/
 | `docs/ROADMAP.md` | Suivi d'avancement par phases (incluant génération `.traineddata`) | Actif |
 | `docs/DECISIONS.md` | Journal des décisions d'architecture (ADR-001 à ADR-008) | Actif |
 | `build.gradle.kts` | Configuration Gradle racine (plugins Android Application, Kotlin Compose, KSP) | Actif |
-| `gradle/libs.versions.toml` | Catalogue des versions (CameraX, Accompanist, Tesseract, Room, KSP) | Actif |
-| `app/build.gradle.kts` | Configuration du module `:app` (minSdk 29, targetSdk 37, Compose, KSP, Room) | Actif |
-| `app/src/main/AndroidManifest.xml` | Déclaration permission `CAMERA`, feature camera, `MainActivity` et `AurebeshGeneratorActivity` | Actif |
+| `gradle/libs.versions.toml` | Catalogue des versions (CameraX, Accompanist, Tesseract, Room, KSP, SplashScreen) | Actif |
+| `app/build.gradle.kts` | Configuration du module `:app` (minSdk 29, targetSdk 37, Compose, KSP, Room, SplashScreen) | Actif |
+| `app/src/main/AndroidManifest.xml` | Déclaration permissions, `MainActivity` (`Theme.App.Starting`), `AurebeshGeneratorActivity` et `InfoActivity` | Actif |
+| `app/src/main/res/drawable/ic_splash_logo.xml` | Logo vectoriel HUD original (sans marque déposée) pour le Splash Screen Android 12+ | Actif |
+| `app/src/main/res/drawable/ic_launcher_background.xml` | Fond vectoriel HUD (dégradé radial + grille télémétrique) de l'icône adaptative | Actif |
+| `app/src/main/res/drawable/ic_launcher_foreground.xml` | Premier plan vectoriel HUD (viseur cyan, glyphe géométrique original et faisceau laser ambre) | Actif |
 | `app/src/main/assets/tessdata/aurebesh.traineddata` | Modèle LSTM Tesseract 5 entraîné sur mesure (Regular, Bold, Condensed, quantifié) | Actif |
 | `app/src/main/assets/fonts/aurebesh_regular.ttf` | Police Aurebesh Regular pour le Studio Aurebesh | Actif |
 | `app/src/main/assets/fonts/aurebesh_bold.ttf` | Police Aurebesh Bold pour le Studio Aurebesh | Actif |
@@ -82,7 +86,7 @@ fr.antoinehory.ocraurebesh/
 | `app/src/main/assets/fonts/aurebesh_hand.ttf` | Police Aurek-Besh Hand (style manuscrit) pour le Studio Aurebesh | Actif |
 | `tools/tessdata-trainer/Dockerfile` | Image Docker Ubuntu 24.04 + Tesseract 5 + Python pour l'entraînement du modèle | Actif |
 | `tools/tessdata-trainer/train_aurebesh.py` | Script reproductible de génération synthétique et d'entraînement LSTM Aurebesh | Actif |
-| `app/src/main/java/fr/antoinehory/ocraurebesh/MainActivity.kt` | Activité hôte Jetpack Compose branchant `ScannerViewModel` et `ScannerRoute` | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/MainActivity.kt` | Activité hôte Jetpack Compose (`installSplashScreen()`) branchant `ScannerViewModel` et `ScannerRoute` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/domain/ScanRecord.kt` | Modèle métier immuable (`@Immutable`) d'un scan Aurebesh | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/domain/OcrResult.kt` | Interface scellée (`Success`, `Empty`, `Error`) résultat d'une analyse OCR | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/TessDataManager.kt` | Extraction atomique de `aurebesh.traineddata` vers `filesDir/tesseract/tessdata/` | Actif |
@@ -96,11 +100,13 @@ fr.antoinehory.ocraurebesh/
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/ScannerOverlay.kt` | Overlay du viseur HUD dessiné avec `Modifier.drawWithCache` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerUiState.kt` | `ScannerUiState` et `ScannerUiEvent` (pattern UDF) | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerViewModel.kt` | `ViewModel` orchestrant l'OCR, la caméra et l'historique Room | Actif |
-| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerScreen.kt` | `ScannerRoute` et `ScannerScreen` Edge-to-Edge adaptatif (Portrait + Paysage) avec accès au Studio Aurebesh | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerScreen.kt` | `ScannerRoute` et `ScannerScreen` Edge-to-Edge adaptatif (Portrait + Paysage) avec accès au Studio et à la page Info | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/generator/AurebeshGeneratorActivity.kt` | Activité dédiée du Studio / Générateur Aurebesh | Actif |
-| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/generator/AurebeshGeneratorModels.kt` | Options de 9 polices Aurebesh, alignement, couleurs et formats d'export | Actif |
-| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/generator/AurebeshGeneratorScreen.kt` | Écran Compose épuré avec menu Style/Couleurs rétractable, damier DAO et Color Picker HSV | Actif |
-| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/generator/AurebeshImageExporter.kt` | Exportateur SVG (police `.ttf` Base64 embarquée), PNG et JPG vers `MediaStore.Downloads` | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/generator/AurebeshGeneratorModels.kt` | Options de 8 polices Aurebesh, alignement, couleurs et formats d'export | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/generator/AurebeshGeneratorScreen.kt` | Écran Compose épuré avec menu Style/Couleurs rétractable, sauvegarde/accès Historique, damier DAO et Color Picker HSV | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/generator/AurebeshImageExporter.kt` | Exportateur SVG (courbes vectorielles `<path>`), PNG et JPG vers `MediaStore.Downloads` | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/info/InfoActivity.kt` | Activité hôte de la page d'informations personnelles, réseaux sociaux et don PayPal | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/info/InfoScreen.kt` | Écran Compose d'informations développeur, icônes RS vectorielles et bouton de don PayPal | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/history/ScanHistorySheet.kt` | `ModalBottomSheet` d'historique et favoris avec `LazyColumn` optimisée (`key` + `contentType`) | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/data/local/entity/ScanHistoryEntity.kt` | Entité Room `scan_history` et fonctions de mapping `toDomain()` / `toEntity()` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/data/local/dao/ScanHistoryDao.kt` | Interface `@Dao` réactive (`Flow` + `suspend`) pour l'historique et les favoris | Actif |

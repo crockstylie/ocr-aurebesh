@@ -1,6 +1,9 @@
 package fr.antoinehory.ocraurebesh.ui.generator
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color as AndroidColor
 import android.graphics.Typeface
@@ -83,14 +86,17 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import fr.antoinehory.ocraurebesh.data.local.AppDatabase
 import fr.antoinehory.ocraurebesh.data.repository.ScanHistoryRepository
 import fr.antoinehory.ocraurebesh.ui.components.HudIcons
 import fr.antoinehory.ocraurebesh.ui.components.HudTopSnackbarHost
+import fr.antoinehory.ocraurebesh.ui.history.ScanHistorySheet
 import fr.antoinehory.ocraurebesh.ui.theme.HudAmber
 import fr.antoinehory.ocraurebesh.ui.theme.HudAmberDim
 import fr.antoinehory.ocraurebesh.ui.theme.HudBackground
@@ -105,6 +111,7 @@ import fr.antoinehory.ocraurebesh.ui.theme.HudSurfaceVariant
 import fr.antoinehory.ocraurebesh.ui.theme.HudTextPrimary
 import fr.antoinehory.ocraurebesh.ui.theme.HudTextSecondary
 import fr.antoinehory.ocraurebesh.ui.theme.OCRAurebeshTheme
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.ceil
@@ -116,9 +123,9 @@ private enum class ColorPickerTarget {
 
 /**
  * Écran épuré du Studio / Générateur Aurebesh :
- * - Barre supérieure minimaliste sans titre : Retour à gauche, bouton Style/Couleurs et bouton Télécharger (sous-menu SVG/PNG/JPG) à droite.
+ * - Barre supérieure minimaliste sans titre : Retour à gauche, boutons Style/Couleurs, Sauvegarder, Télécharger (SVG/PNG/JPG) et Historique à droite.
  * - Espace maximal dédié à l'aperçu Aurebesh en direct et au champ de texte multi-lignes (sans label).
- * - Menu de style et couleurs activable/rétractable à la demande avec 9 polices Aurebesh, damier DAO pour la transparence et Color Picker complet.
+ * - Menu de style et couleurs activable/rétractable à la demande avec 8 polices Aurebesh, damier DAO pour la transparence et Color Picker complet.
  */
 @Composable
 fun AurebeshGeneratorScreen(
@@ -130,6 +137,29 @@ fun AurebeshGeneratorScreen(
     val isPreview = LocalInspectionMode.current
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val historyRepository = remember(context, isPreview) {
+        if (isPreview) {
+            null
+        } else {
+            ScanHistoryRepository(
+                AppDatabase.getInstance(context.applicationContext).scanHistoryDao()
+            )
+        }
+    }
+
+    var isHistorySheetVisible by rememberSaveable { mutableStateOf(false) }
+    var showFavoritesOnly by rememberSaveable { mutableStateOf(false) }
+
+    val historyRecords by remember(historyRepository, showFavoritesOnly) {
+        if (historyRepository == null) {
+            flowOf(emptyList())
+        } else if (showFavoritesOnly) {
+            historyRepository.favoriteScans
+        } else {
+            historyRepository.allScans
+        }
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
 
     var inputText by rememberSaveable {
         mutableStateOf(initialText.ifBlank { "MAY THE FORCE\nBE WITH YOU" })
@@ -247,13 +277,10 @@ fun AurebeshGeneratorScreen(
         val textToSave = inputText.trim()
         if (textToSave.isBlank()) {
             errorMessage = "Écrivez un texte avant de sauvegarder"
-        } else if (!isPreview) {
+        } else if (historyRepository != null) {
             coroutineScope.launch {
                 runCatching {
-                    val repo = ScanHistoryRepository(
-                        AppDatabase.getInstance(context.applicationContext).scanHistoryDao()
-                    )
-                    repo.saveScan(
+                    historyRepository.saveScan(
                         translatedText = textToSave,
                         confidence = 100,
                     )
@@ -286,10 +313,12 @@ fun AurebeshGeneratorScreen(
                 GeneratorTopBar(
                     isStyleMenuVisible = isStyleMenuVisible,
                     isExporting = isExporting,
+                    historyCount = historyRecords.size,
                     onNavigateBack = onNavigateBack,
                     onToggleStyleMenu = { isStyleMenuVisible = !isStyleMenuVisible },
                     onSaveToHistory = saveToHistory,
                     onExport = triggerExport,
+                    onOpenHistory = { isHistorySheetVisible = true },
                 )
 
                 BoxWithConstraints(modifier = Modifier.weight(1f)) {
@@ -428,6 +457,47 @@ fun AurebeshGeneratorScreen(
             )
         }
 
+        if (isHistorySheetVisible) {
+            ScanHistorySheet(
+                records = historyRecords,
+                showFavoritesOnly = showFavoritesOnly,
+                onToggleFavoritesFilter = { favOnly ->
+                    showFavoritesOnly = favOnly
+                },
+                onToggleFavoriteItem = { id, isFav ->
+                    historyRepository?.let { repo ->
+                        coroutineScope.launch { repo.setFavorite(id, isFav) }
+                    }
+                },
+                onCopyText = { text ->
+                    val clipboard =
+                        context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    clipboard?.setPrimaryClip(ClipData.newPlainText("Traduction Aurebesh", text))
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar("Texte copié dans le presse-papiers")
+                    }
+                },
+                onEditInStudio = { text ->
+                    inputText = text
+                    isHistorySheetVisible = false
+                },
+                onDeleteItem = { id ->
+                    historyRepository?.let { repo ->
+                        coroutineScope.launch { repo.deleteScan(id) }
+                    }
+                },
+                onClearAll = {
+                    historyRepository?.let { repo ->
+                        coroutineScope.launch {
+                            repo.clearHistory()
+                            snackbarHostState.showSnackbar("Historique effacé")
+                        }
+                    }
+                },
+                onDismiss = { isHistorySheetVisible = false },
+            )
+        }
+
         if (activeColorPickerTarget != null) {
             val target = activeColorPickerTarget!!
             val initialArgb = when (target) {
@@ -460,16 +530,19 @@ fun AurebeshGeneratorScreen(
 /**
  * Barre supérieure minimaliste sans titre :
  * - À gauche : bouton Retour.
- * - À droite : bouton d'ouverture/fermeture du menu Style & Couleurs + bouton unique Télécharger (avec sous-menu SVG, PNG, JPG).
+ * - À droite : bouton d'ouverture/fermeture du menu Style & Couleurs, bouton Sauvegarder,
+ *   bouton Télécharger (sous-menu SVG, PNG, JPG) et bouton Historique.
  */
 @Composable
 private fun GeneratorTopBar(
     isStyleMenuVisible: Boolean,
     isExporting: Boolean,
+    historyCount: Int,
     onNavigateBack: () -> Unit,
     onToggleStyleMenu: () -> Unit,
     onSaveToHistory: () -> Unit,
     onExport: (AurebeshExportFormat) -> Unit,
+    onOpenHistory: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var isDownloadMenuExpanded by remember { mutableStateOf(false) }
@@ -599,6 +672,46 @@ private fun GeneratorTopBar(
                                 isDownloadMenuExpanded = false
                                 onExport(format)
                             },
+                        )
+                    }
+                }
+            }
+
+            // Bouton Historique avec badge numérique
+            Surface(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .clickable(onClick = onOpenHistory)
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = "Historique"
+                        role = Role.Button
+                    },
+                shape = RoundedCornerShape(50),
+                color = HudGlassButton,
+                border = BorderStroke(1.dp, HudSubtleBorder),
+            ) {
+                Row(
+                    modifier = Modifier.padding(
+                        horizontal = if (historyCount > 0) 12.dp else 11.dp,
+                        vertical = 10.dp,
+                    ),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(
+                        imageVector = HudIcons.History,
+                        contentDescription = null,
+                        tint = HudCyan,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    if (historyCount > 0) {
+                        Text(
+                            text = historyCount.toString(),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = HudTextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Clip,
                         )
                     }
                 }

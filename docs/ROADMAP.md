@@ -63,6 +63,9 @@ Légende : `[x]` Terminé | `[/]` En cours | `[ ]` À faire
 - [x] Export et téléchargement en **SVG vectorisé** (tracés de courbes `<path d="..." />` par caractère directement éditables dans Illustrator sans police installée), **PNG** et **JPG** dans `Téléchargements/OCRAurebesh` via `MediaStore.Downloads`
 - [x] Notification système de téléchargement avec aperçu de l'image et boutons d'action **Partager** / **Ouvrir** (`POST_NOTIFICATIONS` + `Intent.ACTION_SEND` / `Intent.ACTION_VIEW`)
 - [x] Ré-entraînement Docker (`aurebesh.traineddata`) et pipeline multi-échelle Full HD supportant les paragraphes denses (20 lignes de 30 caractères), le flou optique, les faibles contrastes et les lettres en mode contour
+- [x] Sauvegarde et consultation directe de l'historique Room depuis l'Aurebesh Studio (`ScanHistorySheet` partagé)
+- [x] Écran d'informations personnelles (`InfoActivity` / `InfoScreen`) avec liens développeur, bouton de don PayPal et icônes de réseaux sociaux vectorielles
+- [x] Splash Screen HUD sur mesure (`androidx.core:core-splashscreen` + `ic_splash_logo.xml`) et icônes d'application adaptatives + mipmaps WebP haute définition (création originale 100 % libre de droits)
 
 
 
