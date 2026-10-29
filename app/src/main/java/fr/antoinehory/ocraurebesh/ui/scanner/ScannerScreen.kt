@@ -30,7 +30,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -58,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import fr.antoinehory.ocraurebesh.camera.CameraPreview
 import fr.antoinehory.ocraurebesh.ui.components.CameraPermissionGate
 import fr.antoinehory.ocraurebesh.ui.components.HudIcons
+import fr.antoinehory.ocraurebesh.ui.components.HudTopSnackbarHost
 import fr.antoinehory.ocraurebesh.ui.components.ScannerOverlay
 import fr.antoinehory.ocraurebesh.ui.generator.AurebeshGeneratorActivity
 import fr.antoinehory.ocraurebesh.ui.history.ScanHistorySheet
@@ -90,11 +90,11 @@ fun ScannerRoute(
             uiState = uiState,
             onEvent = viewModel::onEvent,
             onCopyText = { text -> copyToClipboard(context, text) },
-            onOpenGenerator = {
+            onOpenGenerator = { initialText ->
                 context.startActivity(
                     AurebeshGeneratorActivity.createIntent(
                         context = context,
-                        initialText = uiState.recognizedText,
+                        initialText = initialText,
                     )
                 )
             },
@@ -125,7 +125,7 @@ fun ScannerScreen(
     uiState: ScannerUiState,
     onEvent: (ScannerUiEvent) -> Unit,
     onCopyText: (String) -> Unit,
-    onOpenGenerator: () -> Unit,
+    onOpenGenerator: (String) -> Unit,
     cameraPreviewContent: @Composable (Modifier) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -142,7 +142,6 @@ fun ScannerScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.safeDrawing,
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         containerColor = Color.Black,
     ) { innerPadding ->
         BoxWithConstraints(
@@ -165,7 +164,7 @@ fun ScannerScreen(
                     uiState = uiState,
                     onEvent = onEvent,
                     onCopyText = onCopyText,
-                    onOpenGenerator = onOpenGenerator,
+                    onOpenGenerator = { onOpenGenerator(uiState.recognizedText) },
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
@@ -177,7 +176,7 @@ fun ScannerScreen(
                     uiState = uiState,
                     onEvent = onEvent,
                     onCopyText = onCopyText,
-                    onOpenGenerator = onOpenGenerator,
+                    onOpenGenerator = { onOpenGenerator(uiState.recognizedText) },
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
@@ -185,6 +184,15 @@ fun ScannerScreen(
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                 )
             }
+
+            // 3. Toast HUD sombre positionné en haut pour ne jamais masquer les boutons du bas
+            HudTopSnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(innerPadding)
+                    .padding(top = 60.dp),
+            )
         }
 
         if (uiState.isHistorySheetVisible) {
@@ -198,6 +206,10 @@ fun ScannerScreen(
                     onEvent(ScannerUiEvent.ToggleFavoriteRecord(id, isFav))
                 },
                 onCopyText = onCopyText,
+                onEditInStudio = { text ->
+                    onEvent(ScannerUiEvent.SetHistorySheetVisible(false))
+                    onOpenGenerator(text)
+                },
                 onDeleteItem = { id ->
                     onEvent(ScannerUiEvent.DeleteHistoryRecord(id))
                 },

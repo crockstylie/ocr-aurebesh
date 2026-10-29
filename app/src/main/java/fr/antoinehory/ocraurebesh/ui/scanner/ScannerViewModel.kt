@@ -35,6 +35,7 @@ class ScannerViewModel(
 
     private val _uiState = MutableStateFlow(ScannerUiState())
     val uiState: StateFlow<ScannerUiState> = _uiState.asStateFlow()
+    private var consecutiveEmptyFrames = 0
 
     val imageAnalyzer = AurebeshImageAnalyzer(
         ocrEngine = ocrEngine,
@@ -164,19 +165,20 @@ class ScannerViewModel(
     internal fun onOcrResult(result: OcrResult) {
         when (result) {
             is OcrResult.Success -> {
+                consecutiveEmptyFrames = 0
                 _uiState.update { state ->
                     if (state.isPaused) {
                         return@update state
                     }
                     val currentLen = state.recognizedText.count { it != ' ' }
                     val newLen = result.text.count { it != ' ' }
-                    // Anti-clignotement : évite qu'un caractère isolé de faible confiance n'écrase
+                    // Anti-clignotement : évite qu'un fragment court de faible confiance n'écrase
                     // une phrase complète récemment reconnue avec une meilleure confiance
-                    val isWeakSingleCharOverride =
-                        newLen == 1 &&
-                            currentLen >= 3 &&
+                    val isWeakShortOverride =
+                        newLen <= 2 &&
+                            currentLen >= 4 &&
                             result.confidence < state.confidence
-                    if (isWeakSingleCharOverride) {
+                    if (isWeakShortOverride) {
                         state
                     } else {
                         state.copy(
@@ -189,7 +191,24 @@ class ScannerViewModel(
             }
 
             OcrResult.Empty -> {
-                // On conserve la dernière lecture valide affichée à l'écran pour éviter le clignotement
+                // Un seul frame vide est ignoré (anti-clignotement), mais à partir de 2 frames vides
+                // consécutifs (caméra pointée vers un bureau sans Aurebesh), on efface l'ancien texte
+                if (!_uiState.value.isPaused) {
+                    consecutiveEmptyFrames++
+                    if (consecutiveEmptyFrames >= EMPTY_FRAMES_TO_CLEAR) {
+                        _uiState.update { state ->
+                            if (state.isPaused || state.recognizedText.isEmpty()) {
+                                state
+                            } else {
+                                state.copy(
+                                    recognizedText = "",
+                                    confidence = 0,
+                                    wasAutoInverted = false,
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             is OcrResult.Error -> {
@@ -222,6 +241,7 @@ class ScannerViewModel(
     }
 
     companion object {
+        private const val EMPTY_FRAMES_TO_CLEAR = 2
         private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
         fun provideFactory(context: Context): ViewModelProvider.Factory {

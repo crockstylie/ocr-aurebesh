@@ -50,7 +50,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
@@ -90,6 +89,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import fr.antoinehory.ocraurebesh.ui.components.HudIcons
+import fr.antoinehory.ocraurebesh.ui.components.HudTopSnackbarHost
 import fr.antoinehory.ocraurebesh.ui.theme.HudAmber
 import fr.antoinehory.ocraurebesh.ui.theme.HudAmberDim
 import fr.antoinehory.ocraurebesh.ui.theme.HudBackground
@@ -248,26 +248,29 @@ fun AurebeshGeneratorScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.safeDrawing,
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         containerColor = HudBackground,
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .consumeWindowInsets(innerPadding)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .consumeWindowInsets(innerPadding),
         ) {
-            GeneratorTopBar(
-                isStyleMenuVisible = isStyleMenuVisible,
-                isExporting = isExporting,
-                onNavigateBack = onNavigateBack,
-                onToggleStyleMenu = { isStyleMenuVisible = !isStyleMenuVisible },
-                onExport = triggerExport,
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                GeneratorTopBar(
+                    isStyleMenuVisible = isStyleMenuVisible,
+                    isExporting = isExporting,
+                    onNavigateBack = onNavigateBack,
+                    onToggleStyleMenu = { isStyleMenuVisible = !isStyleMenuVisible },
+                    onExport = triggerExport,
+                )
 
-            BoxWithConstraints(modifier = Modifier.weight(1f)) {
+                BoxWithConstraints(modifier = Modifier.weight(1f)) {
                 val isLandscape = maxWidth > maxHeight
 
                 if (isLandscape) {
@@ -392,6 +395,15 @@ fun AurebeshGeneratorScreen(
                     }
                 }
             }
+            }
+
+            // Toast HUD sombre positionné en haut (sous la barre d'outils) pour ne jamais gêner le bas
+            HudTopSnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 58.dp),
+            )
         }
 
         if (activeColorPickerTarget != null) {
@@ -936,7 +948,7 @@ private fun DrawScope.drawCheckerboard(cellSizePx: Float) {
 }
 
 /**
- * Boîte de dialogue Color Picker HSV (pavé 2D Saturation/Valeur + barre de Teinte + aperçu Hex).
+ * Boîte de dialogue Color Picker HSV (pavé 2D Saturation/Valeur + barre de Teinte + saisie Hexadécimale).
  */
 @Composable
 private fun HsvColorPickerDialog(
@@ -955,8 +967,13 @@ private fun HsvColorPickerDialog(
     val currentColorArgb = remember(hue, saturation, value) {
         AndroidColor.HSVToColor(floatArrayOf(hue, saturation, value))
     }
-    val hexString = remember(currentColorArgb) {
-        String.format(Locale.US, "#%06X", 0xFFFFFF and currentColorArgb)
+    var hexInput by remember(initialColorArgb) {
+        mutableStateOf(String.format(Locale.US, "#%06X", 0xFFFFFF and initialColorArgb))
+    }
+
+    val syncHexFromHsv: (Float, Float, Float) -> Unit = { h, s, v ->
+        val argb = AndroidColor.HSVToColor(floatArrayOf(h, s, v))
+        hexInput = String.format(Locale.US, "#%06X", 0xFFFFFF and argb)
     }
 
     AlertDialog(
@@ -973,30 +990,19 @@ private fun HsvColorPickerDialog(
                     style = MaterialTheme.typography.titleMedium,
                     color = HudTextPrimary,
                 )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        text = hexString,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontFamily = FontFamily.Monospace,
-                        color = HudTextSecondary,
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(Color(currentColorArgb), CircleShape)
-                            .border(1.dp, Color.White.copy(alpha = 0.5f), CircleShape)
-                    )
-                }
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(Color(currentColorArgb), CircleShape)
+                        .border(1.dp, Color.White.copy(alpha = 0.5f), CircleShape)
+                )
             }
         },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 // 1. Pavé 2D Saturation (X) / Luminosité-Valeur (Y)
                 val pureHueColor = remember(hue) {
@@ -1005,20 +1011,26 @@ private fun HsvColorPickerDialog(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(170.dp)
+                        .height(160.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .border(1.dp, HudSubtleBorder, RoundedCornerShape(14.dp))
                         .pointerInput(Unit) {
                             detectTapGestures { offset ->
-                                saturation = (offset.x / size.width).coerceIn(0f, 1f)
-                                value = (1f - (offset.y / size.height)).coerceIn(0f, 1f)
+                                val newSat = (offset.x / size.width).coerceIn(0f, 1f)
+                                val newVal = (1f - (offset.y / size.height)).coerceIn(0f, 1f)
+                                saturation = newSat
+                                value = newVal
+                                syncHexFromHsv(hue, newSat, newVal)
                             }
                         }
                         .pointerInput(Unit) {
                             detectDragGestures { change, _ ->
                                 change.consume()
-                                saturation = (change.position.x / size.width).coerceIn(0f, 1f)
-                                value = (1f - (change.position.y / size.height)).coerceIn(0f, 1f)
+                                val newSat = (change.position.x / size.width).coerceIn(0f, 1f)
+                                val newVal = (1f - (change.position.y / size.height)).coerceIn(0f, 1f)
+                                saturation = newSat
+                                value = newVal
+                                syncHexFromHsv(hue, newSat, newVal)
                             }
                         }
                 ) {
@@ -1070,13 +1082,17 @@ private fun HsvColorPickerDialog(
                         .border(1.dp, HudSubtleBorder, RoundedCornerShape(50))
                         .pointerInput(Unit) {
                             detectTapGestures { offset ->
-                                hue = ((offset.x / size.width) * 360f).coerceIn(0f, 360f)
+                                val newHue = ((offset.x / size.width) * 360f).coerceIn(0f, 360f)
+                                hue = newHue
+                                syncHexFromHsv(newHue, saturation, value)
                             }
                         }
                         .pointerInput(Unit) {
                             detectDragGestures { change, _ ->
                                 change.consume()
-                                hue = ((change.position.x / size.width) * 360f).coerceIn(0f, 360f)
+                                val newHue = ((change.position.x / size.width) * 360f).coerceIn(0f, 360f)
+                                hue = newHue
+                                syncHexFromHsv(newHue, saturation, value)
                             }
                         }
                 ) {
@@ -1091,6 +1107,38 @@ private fun HsvColorPickerDialog(
                         )
                     }
                 }
+
+                // 3. Champ de saisie du code Hexadécimal (#RRGGBB)
+                OutlinedTextField(
+                    value = hexInput,
+                    onValueChange = { raw ->
+                        val cleaned = raw
+                            .uppercase(Locale.US)
+                            .filterIndexed { index, ch ->
+                                (index == 0 && ch == '#') || ch in '0'..'9' || ch in 'A'..'F'
+                            }
+                        val maxLen = if (cleaned.startsWith("#")) 7 else 6
+                        val bounded = cleaned.take(maxLen)
+                        hexInput = bounded
+
+                        val hexDigits = bounded.removePrefix("#")
+                        if (hexDigits.length == 6) {
+                            val rgb = hexDigits.toIntOrNull(16)
+                            if (rgb != null) {
+                                val parsedArgb = (0xFF shl 24) or rgb
+                                val hsv = FloatArray(3)
+                                AndroidColor.colorToHSV(parsedArgb, hsv)
+                                hue = hsv[0]
+                                saturation = hsv[1]
+                                value = hsv[2]
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    placeholder = { Text("#00E5FF") },
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         },
         confirmButton = {

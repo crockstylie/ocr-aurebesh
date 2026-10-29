@@ -76,7 +76,6 @@ fr.antoinehory.ocraurebesh/
 | `app/src/main/assets/fonts/aurebesh_italic.ttf` | Police Aurebesh Italic pour le Studio Aurebesh | Actif |
 | `app/src/main/assets/fonts/aurebesh_condensed.ttf` | Police Aurebesh Condensed pour le Studio Aurebesh | Actif |
 | `app/src/main/assets/fonts/aurebesh_af_canon.otf` | Police Aurebesh AF Canon pour le Studio Aurebesh | Actif |
-| `app/src/main/assets/fonts/aurebesh_tech.otf` | Police Aurebesh AF Canon Tech pour le Studio Aurebesh | Actif |
 | `app/src/main/assets/fonts/aurebesh_cantina.otf` | Police Aurebesh Cantina (style enseigne) pour le Studio Aurebesh | Actif |
 | `app/src/main/assets/fonts/aurebesh_droid.ttf` | Police Aurebesh Droid (style matriciel) pour le Studio Aurebesh | Actif |
 | `app/src/main/assets/fonts/droidobesh_depot.otf` | Police Droidobesh Depot (style industriel) pour le Studio Aurebesh | Actif |
@@ -93,6 +92,7 @@ fr.antoinehory.ocraurebesh/
 | `app/src/main/java/fr/antoinehory/ocraurebesh/camera/CameraPreview.kt` | Composable CameraX (`PreviewView` + `ImageAnalysis` `STRATEGY_KEEP_ONLY_LATEST` + Torche + Gel image) | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/CameraPermissionGate.kt` | Garde-barrière Accompanist Permissions (`CAMERA`) avec gestion rationale et refus permanent | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/HudIcons.kt` | Icônes vectorielles légères pour les contrôles HUD et le Studio Aurebesh | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/HudSnackbar.kt` | Hôte de notification HUD sombre positionné en haut d'écran (ne masque jamais le bas) | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/ScannerOverlay.kt` | Overlay du viseur HUD dessiné avec `Modifier.drawWithCache` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerUiState.kt` | `ScannerUiState` et `ScannerUiEvent` (pattern UDF) | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerViewModel.kt` | `ViewModel` orchestrant l'OCR, la caméra et l'historique Room | Actif |

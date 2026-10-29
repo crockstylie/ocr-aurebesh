@@ -127,6 +127,26 @@ class AutoImagePreprocessorTest {
         assertEquals(AutoImagePreprocessor.COLOR_BLACK, result.primaryPixels[9 * width + 29])
     }
 
+    @Test
+    fun `preprocessPixels suppresses low-contrast uniform desk surface noise`() {
+        val width = 32
+        val height = 32
+        val pixels = IntArray(width * height)
+
+        // Simulation d'un bureau avec de légères variations de grain de bois (luminance entre 110 et 122)
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val luma = 110 + ((x * 3 + y * 5) % 13)
+                pixels[y * width + x] = (0xFF shl 24) or (luma shl 16) or (luma shl 8) or luma
+            }
+        }
+
+        val result = AutoImagePreprocessor.preprocessPixels(pixels, width, height)
+
+        assertEquals(0f, result.primaryInkRatio, 0.001f)
+        assertEquals(0f, result.invertedInkRatio, 0.001f)
+    }
+
     private fun buildSyntheticRoi(
         width: Int,
         height: Int,

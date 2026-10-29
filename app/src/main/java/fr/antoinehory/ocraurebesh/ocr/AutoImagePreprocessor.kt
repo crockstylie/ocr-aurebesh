@@ -32,6 +32,8 @@ class PreprocessedImages(
     val primaryBitmap: Bitmap,
     val invertedBitmap: Bitmap,
     val wasAutoInverted: Boolean,
+    val primaryInkRatio: Float,
+    val invertedInkRatio: Float,
 )
 
 /**
@@ -43,6 +45,8 @@ internal class PreprocessedPixelBuffers(
     val invertedPixels: IntArray,
     val threshold: Int,
     val wasAutoInverted: Boolean,
+    val primaryInkRatio: Float,
+    val invertedInkRatio: Float,
 )
 
 /**
@@ -168,6 +172,8 @@ object AutoImagePreprocessor {
             primaryBitmap = primaryBitmap,
             invertedBitmap = invertedBitmap,
             wasAutoInverted = buffers.wasAutoInverted,
+            primaryInkRatio = buffers.primaryInkRatio,
+            invertedInkRatio = buffers.invertedInkRatio,
         )
     }
 
@@ -233,7 +239,9 @@ object AutoImagePreprocessor {
         }
 
         val stretchedGray = IntArray(totalPixels)
-        val range = max(1, maxLuma - minLuma)
+        // Garde-fou : sur une surface quasi-uniforme (bureau, mur) où l'écart de luminance est < 64,
+        // on bride l'étirement pour ne pas amplifier le grain ou le bruit capteur en faux glyphes.
+        val range = max(64, maxLuma - minLuma)
         for (i in 0 until totalPixels) {
             stretchedGray[i] = ((rawGray[i] - minLuma) * 255 / range).coerceIn(0, 255)
         }
@@ -285,10 +293,12 @@ object AutoImagePreprocessor {
         }
 
         val windowRadius = max(6, min(28, min(width, height) / 2))
-        val localContrastDelta = 14
+        val localContrastDelta = 26
 
         val darkOnLightPixels = IntArray(totalPixels)
         val lightOnDarkPixels = IntArray(totalPixels)
+        var darkGlyphCount = 0
+        var lightGlyphCount = 0
 
         for (y in 0 until height) {
             val y1 = max(0, y - windowRadius)
@@ -309,27 +319,36 @@ object AutoImagePreprocessor {
                 val g = grayValues[rowOffset + x]
 
                 // Candidat Texte Sombre sur Fond Clair :
-                // Seuls les traits présentant un vrai contraste local négatif deviennent noirs
-                // (les grandes zones sombres uniformes du décor sont ainsi ignorées en plein écran)
+                // Seuls les traits présentant un fort contraste local négatif deviennent noirs
                 val isDarkGlyph = g <= localMean - localContrastDelta
 
                 // Candidat Texte Clair sur Fond Sombre (écran, hologramme, néon) :
-                // Seuls les traits présentant un vrai contraste local positif deviennent noirs
+                // Seuls les traits présentant un fort contraste local positif deviennent noirs
                 val isLightGlyph = g >= localMean + localContrastDelta
+
+                if (isDarkGlyph) darkGlyphCount++
+                if (isLightGlyph) lightGlyphCount++
 
                 darkOnLightPixels[rowOffset + x] = if (isDarkGlyph) COLOR_BLACK else COLOR_WHITE
                 lightOnDarkPixels[rowOffset + x] = if (isLightGlyph) COLOR_BLACK else COLOR_WHITE
             }
         }
 
+        val darkInkRatio = darkGlyphCount.toFloat() / totalPixels.toFloat()
+        val lightInkRatio = lightGlyphCount.toFloat() / totalPixels.toFloat()
+
         val primaryPixels = if (shouldInvert) lightOnDarkPixels else darkOnLightPixels
         val invertedPixels = if (shouldInvert) darkOnLightPixels else lightOnDarkPixels
+        val primaryInkRatio = if (shouldInvert) lightInkRatio else darkInkRatio
+        val invertedInkRatio = if (shouldInvert) darkInkRatio else lightInkRatio
 
         return PreprocessedPixelBuffers(
             primaryPixels = primaryPixels,
             invertedPixels = invertedPixels,
             threshold = threshold,
             wasAutoInverted = shouldInvert,
+            primaryInkRatio = primaryInkRatio,
+            invertedInkRatio = invertedInkRatio,
         )
     }
 

@@ -1,6 +1,12 @@
 package fr.antoinehory.ocraurebesh.ui.history
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -21,15 +27,21 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import fr.antoinehory.ocraurebesh.domain.ScanRecord
 import fr.antoinehory.ocraurebesh.ui.components.HudIcons
@@ -38,15 +50,22 @@ import fr.antoinehory.ocraurebesh.ui.theme.HudBackground
 import fr.antoinehory.ocraurebesh.ui.theme.HudCoral
 import fr.antoinehory.ocraurebesh.ui.theme.HudCyan
 import fr.antoinehory.ocraurebesh.ui.theme.HudGlassBorder
+import fr.antoinehory.ocraurebesh.ui.theme.HudGlassButton
+import fr.antoinehory.ocraurebesh.ui.theme.HudSubtleBorder
 import fr.antoinehory.ocraurebesh.ui.theme.HudSurfaceVariant
 import fr.antoinehory.ocraurebesh.ui.theme.HudTextPrimary
 import fr.antoinehory.ocraurebesh.ui.theme.HudTextSecondary
 import java.text.DateFormat
 import java.util.Date
 
+private sealed interface HistoryDeleteConfirmation {
+    data object ClearAll : HistoryDeleteConfirmation
+    data class SingleItem(val record: ScanRecord) : HistoryDeleteConfirmation
+}
+
 /**
  * Volet modal (`ModalBottomSheet`) affichant l'historique local et les favoris sauvegardés dans Room,
- * avec boutons d'action compacts à icônes et conservation de l'état de défilement (`rememberLazyListState`).
+ * avec toast de confirmation avant suppression (unitaire ou totale) et bouton d'ouverture dans Studio Aurebesh.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +75,7 @@ fun ScanHistorySheet(
     onToggleFavoritesFilter: (Boolean) -> Unit,
     onToggleFavoriteItem: (Long, Boolean) -> Unit,
     onCopyText: (String) -> Unit,
+    onEditInStudio: (String) -> Unit,
     onDeleteItem: (Long) -> Unit,
     onClearAll: () -> Unit,
     onDismiss: () -> Unit,
@@ -66,6 +86,7 @@ fun ScanHistorySheet(
     val dateFormatter = remember {
         DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
     }
+    var pendingConfirmation by remember { mutableStateOf<HistoryDeleteConfirmation?>(null) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -91,7 +112,11 @@ fun ScanHistorySheet(
                     color = HudTextPrimary,
                 )
                 if (records.isNotEmpty() && !showFavoritesOnly) {
-                    IconButton(onClick = onClearAll) {
+                    IconButton(
+                        onClick = {
+                            pendingConfirmation = HistoryDeleteConfirmation.ClearAll
+                        }
+                    ) {
                         Icon(
                             imageVector = HudIcons.Delete,
                             contentDescription = "Tout effacer",
@@ -123,6 +148,97 @@ fun ScanHistorySheet(
                         )
                     },
                 )
+            }
+
+            // Toast de contrôle / confirmation avant suppression d'une ligne ou de tout l'historique
+            AnimatedVisibility(
+                visible = pendingConfirmation != null,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
+                val confirmation = pendingConfirmation
+                if (confirmation != null) {
+                    val promptText = when (confirmation) {
+                        HistoryDeleteConfirmation.ClearAll ->
+                            "Tout l'historique va être supprimé. Confirmer ?"
+                        is HistoryDeleteConfirmation.SingleItem ->
+                            "Supprimer « ${confirmation.record.translatedText} » ?"
+                    }
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = HudSurfaceVariant,
+                        border = BorderStroke(1.dp, HudCoral.copy(alpha = 0.75f)),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = promptText,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = HudTextPrimary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+
+                            Row(
+                                modifier = Modifier.padding(start = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { pendingConfirmation = null },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = HudGlassButton,
+                                    border = BorderStroke(1.dp, HudSubtleBorder),
+                                ) {
+                                    Text(
+                                        text = "Annuler",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = HudTextSecondary,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                    )
+                                }
+
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            when (confirmation) {
+                                                HistoryDeleteConfirmation.ClearAll -> onClearAll()
+                                                is HistoryDeleteConfirmation.SingleItem ->
+                                                    onDeleteItem(confirmation.record.id)
+                                            }
+                                            pendingConfirmation = null
+                                        },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = HudCoral.copy(alpha = 0.22f),
+                                    border = BorderStroke(1.dp, HudCoral),
+                                ) {
+                                    Text(
+                                        text = "OK",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = HudCoral,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -160,7 +276,10 @@ fun ScanHistorySheet(
                                 onToggleFavoriteItem(record.id, !record.isFavorite)
                             },
                             onCopy = { onCopyText(record.translatedText) },
-                            onDelete = { onDeleteItem(record.id) },
+                            onEditInStudio = { onEditInStudio(record.translatedText) },
+                            onDelete = {
+                                pendingConfirmation = HistoryDeleteConfirmation.SingleItem(record)
+                            },
                         )
                     }
                 }
@@ -175,6 +294,7 @@ private fun ScanHistoryItemCard(
     formattedDate: String,
     onToggleFavorite: () -> Unit,
     onCopy: () -> Unit,
+    onEditInStudio: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -212,6 +332,13 @@ private fun ScanHistoryItemCard(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onEditInStudio) {
+                    Icon(
+                        imageVector = HudIcons.Edit,
+                        contentDescription = "Modifier dans Studio Aurebesh",
+                        tint = HudCyan,
+                    )
+                }
                 IconButton(onClick = onCopy) {
                     Icon(
                         imageVector = HudIcons.Copy,
