@@ -32,6 +32,17 @@ class PreprocessedImages(
 )
 
 /**
+ * Résultat intermédiaire (buffers de pixels ARGB) de [AutoImagePreprocessor.preprocessPixels],
+ * directement testable en tests unitaires JVM sans dépendance aux instances natives [Bitmap].
+ */
+internal class PreprocessedPixelBuffers(
+    val primaryPixels: IntArray,
+    val invertedPixels: IntArray,
+    val threshold: Int,
+    val wasAutoInverted: Boolean,
+)
+
+/**
  * Préprocesseur d'image 100 % automatique (zéro réglage utilisateur).
  *
  * Étapes appliquées sur la zone de visée (ROI) :
@@ -44,8 +55,8 @@ class PreprocessedImages(
  */
 object AutoImagePreprocessor {
 
-    private const val COLOR_BLACK = -0x1000000 // 0xFF000000
-    private const val COLOR_WHITE = -0x1       // 0xFFFFFFFF
+    internal const val COLOR_BLACK = -0x1000000 // 0xFF000000
+    internal const val COLOR_WHITE = -0x1       // 0xFFFFFFFF
 
     /**
      * Applique la rotation du capteur et découpe la région d'intérêt (ROI) de la frame.
@@ -87,6 +98,34 @@ object AutoImagePreprocessor {
 
         val argbPixels = IntArray(totalPixels)
         roiBitmap.getPixels(argbPixels, 0, width, 0, 0, width, height)
+
+        val buffers = preprocessPixels(argbPixels, width, height)
+
+        val primaryBitmap = createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        primaryBitmap.setPixels(buffers.primaryPixels, 0, width, 0, 0, width, height)
+
+        val invertedBitmap = createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        invertedBitmap.setPixels(buffers.invertedPixels, 0, width, 0, 0, width, height)
+
+        return PreprocessedImages(
+            primaryBitmap = primaryBitmap,
+            invertedBitmap = invertedBitmap,
+            wasAutoInverted = buffers.wasAutoInverted,
+        )
+    }
+
+    /**
+     * Cœur algorithmique de prétraitement opérant directement sur un tableau de pixels ARGB.
+     */
+    internal fun preprocessPixels(
+        argbPixels: IntArray,
+        width: Int,
+        height: Int,
+    ): PreprocessedPixelBuffers {
+        val totalPixels = width * height
+        require(totalPixels > 0 && argbPixels.size >= totalPixels) {
+            "Dimensions invalides pour preprocessPixels (width=$width, height=$height, size=${argbPixels.size})"
+        }
 
         val grayValues = IntArray(totalPixels)
         val rawHistogram = IntArray(256)
@@ -171,16 +210,11 @@ object AutoImagePreprocessor {
             }
         }
 
-        val primaryBitmap = createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        primaryBitmap.setPixels(primaryPixels, 0, width, 0, 0, width, height)
-
-        val invertedBitmap = createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        invertedBitmap.setPixels(invertedPixels, 0, width, 0, 0, width, height)
-
-        return PreprocessedImages(
-            primaryBitmap = primaryBitmap,
-            invertedBitmap = invertedBitmap,
-            wasAutoInverted = shouldInvert
+        return PreprocessedPixelBuffers(
+            primaryPixels = primaryPixels,
+            invertedPixels = invertedPixels,
+            threshold = threshold,
+            wasAutoInverted = shouldInvert,
         )
     }
 

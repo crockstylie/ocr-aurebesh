@@ -5,11 +5,12 @@ import android.os.SystemClock
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import fr.antoinehory.ocraurebesh.domain.OcrResult
-import fr.antoinehory.ocraurebesh.ocr.AurebeshOcrEngine
 import fr.antoinehory.ocraurebesh.ocr.AutoImagePreprocessor
+import fr.antoinehory.ocraurebesh.ocr.OcrRecognizer
 import fr.antoinehory.ocraurebesh.ocr.RoiRectFraction
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -20,10 +21,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  * - Ferme systématiquement chaque [ImageProxy] via `use {}` pour ne jamais bloquer le pipeline CameraX.
  * - Ignore immédiatement les frames lorsque le scan est en pause, qu'une analyse OCR est déjà en cours,
  *   ou que le délai minimal ([minIntervalMs]) entre deux analyses n'est pas écoulé.
- * - Découpe uniquement la région d'intérêt ([roiFraction]) avant d'invoquer [AurebeshOcrEngine].
+ * - Découpe uniquement la région d'intérêt ([roiFraction]) avant d'invoquer [OcrRecognizer].
+ * - Garantit le recyclage du [Bitmap] ROI même en cas d'annulation du [CoroutineScope] parent.
  */
 class AurebeshImageAnalyzer(
-    private val ocrEngine: AurebeshOcrEngine,
+    private val ocrEngine: OcrRecognizer,
     private val coroutineScope: CoroutineScope,
     private val isPausedProvider: () -> Boolean,
     private val roiFraction: RoiRectFraction = RoiRectFraction(),
@@ -38,6 +40,7 @@ class AurebeshImageAnalyzer(
     override fun analyze(imageProxy: ImageProxy) {
         val now = SystemClock.elapsedRealtime()
         if (
+            !coroutineScope.isActive ||
             isPausedProvider() ||
             (now - lastAnalysisTimestampMs) < minIntervalMs ||
             !isProcessing.compareAndSet(false, true)
@@ -75,7 +78,7 @@ class AurebeshImageAnalyzer(
 
         if (roiBitmap == null) return
 
-        coroutineScope.launch {
+        val job = coroutineScope.launch {
             try {
                 if (!isPausedProvider()) {
                     val result = ocrEngine.recognize(roiBitmap)
@@ -92,12 +95,14 @@ class AurebeshImageAnalyzer(
                         cause = e,
                     )
                 )
-            } finally {
-                if (!roiBitmap.isRecycled) {
-                    roiBitmap.recycle()
-                }
-                isProcessing.set(false)
             }
+        }
+
+        job.invokeOnCompletion {
+            if (!roiBitmap.isRecycled) {
+                roiBitmap.recycle()
+            }
+            isProcessing.set(false)
         }
     }
 

@@ -77,8 +77,8 @@ fr.antoinehory.ocraurebesh/
 | `app/src/main/java/fr/antoinehory/ocraurebesh/domain/OcrResult.kt` | Interface scellée (`Success`, `Empty`, `Error`) résultat d'une analyse OCR | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/TessDataManager.kt` | Extraction atomique de `aurebesh.traineddata` vers `filesDir/tesseract/tessdata/` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/AutoImagePreprocessor.kt` | Découpage ROI, étirement d'histogramme 2%-98%, binarisation d'Otsu et détection auto de polarité | Actif |
-| `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/AurebeshOcrEngine.kt` | Wrapper thread-safe (`Mutex`) de `TessBaseAPI` avec double-passe transparente sur la confiance | Actif |
-| `app/src/main/java/fr/antoinehory/ocraurebesh/camera/AurebeshImageAnalyzer.kt` | `ImageAnalysis.Analyzer` extrayant le ROI avec fermeture garantie de l'`ImageProxy` (`use {}`) | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/AurebeshOcrEngine.kt` | Interface `OcrRecognizer` et wrapper thread-safe (`Mutex`) de `TessBaseAPI` avec double-passe transparente | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/camera/AurebeshImageAnalyzer.kt` | `ImageAnalysis.Analyzer` extrayant le ROI avec fermeture garantie de l'`ImageProxy` (`use {}`) et recyclage `Bitmap` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/camera/CameraPreview.kt` | Composable CameraX (`PreviewView` + `ImageAnalysis` `STRATEGY_KEEP_ONLY_LATEST` + Torche) | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/CameraPermissionGate.kt` | Garde-barrière Accompanist Permissions (`CAMERA`) avec gestion rationale et refus permanent | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/ScannerOverlay.kt` | Overlay du viseur HUD dessiné avec `Modifier.drawWithCache` | Actif |
@@ -93,6 +93,10 @@ fr.antoinehory.ocraurebesh/
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/theme/Color.kt` | Palette de couleurs Material 3 | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/theme/Theme.kt` | `OCRAurebeshTheme` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/theme/Type.kt` | Typographies Material 3 | Actif |
+| `app/src/test/java/fr/antoinehory/ocraurebesh/ocr/AutoImagePreprocessorTest.kt` | Tests unitaires JVM d'Otsu, de l'étirement d'histogramme et de la détection auto de polarité | Actif |
+| `app/src/test/java/fr/antoinehory/ocraurebesh/data/ScanHistoryMapperAndRepositoryTest.kt` | Tests unitaires des mappers `toDomain`/`toEntity` et de `ScanHistoryRepository` | Actif |
+| `app/src/test/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerViewModelTest.kt` | Tests unitaires de `ScannerViewModel` avec Fakes (`FakeOcrRecognizer`, `FakeScanHistoryDao`) | Actif |
+| `app/src/androidTest/java/fr/antoinehory/ocraurebesh/data/local/ScanHistoryDaoInstrumentedTest.kt` | Tests instrumentés SQLite en mémoire de `ScanHistoryDao` | Actif |
 
 ---
 

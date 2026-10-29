@@ -63,6 +63,7 @@ fun CameraPreview(
     DisposableEffect(lifecycleOwner, analyzer) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         val mainExecutor = ContextCompat.getMainExecutor(context)
+        var activeImageAnalysis: ImageAnalysis? = null
 
         val listener = Runnable {
             try {
@@ -77,6 +78,7 @@ fun CameraPreview(
                     .build()
                     .also { it.setAnalyzer(analysisExecutor, analyzer) }
 
+                activeImageAnalysis = imageAnalysisUseCase
                 val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
                 cameraProvider.unbindAll()
@@ -103,8 +105,12 @@ fun CameraPreview(
 
         onDispose {
             boundCamera = null
-            runCatching {
-                cameraProviderFuture.get().unbindAll()
+            activeImageAnalysis?.clearAnalyzer()
+            activeImageAnalysis = null
+            if (cameraProviderFuture.isDone) {
+                runCatching {
+                    cameraProviderFuture.get().unbindAll()
+                }
             }
         }
     }

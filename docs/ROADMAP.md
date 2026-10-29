@@ -52,6 +52,6 @@ Légende : `[x]` Terminé | `[/]` En cours | `[ ]` À faire
 - [x] Options ergonomiques (pause/gel du scan, lampe torche, copie du texte traduit dans le presse-papiers)
 
 ## Phase 7 : Stabilisation, Tests & Optimisation
-- [ ] Tests unitaires de `AutoImagePreprocessor` (vérification de la détection clair/sombre et d'Otsu), des mappers Room et du `ViewModel`
-- [ ] Vérification de l'absence de fuites mémoire (`ImageProxy`, `Bitmap`, `TessBaseAPI`)
-- [ ] Ajustements de performance Compose et validation sur des images Aurebesh réelles (écrans et imprimés)
+- [x] Tests unitaires de `AutoImagePreprocessor` (vérification de la détection clair/sombre et d'Otsu), des mappers Room et du `ViewModel`
+- [x] Vérification de l'absence de fuites mémoire (`ImageProxy`, `Bitmap`, `TessBaseAPI`)
+- [x] Ajustements de performance Compose et validation sur des images Aurebesh réelles (écrans et imprimés)

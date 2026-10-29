@@ -11,6 +11,16 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
+ * Contrat d'abstraction du moteur de reconnaissance OCR Aurebesh,
+ * facilitant l'injection de Fakes lors des tests unitaires de [fr.antoinehory.ocraurebesh.ui.scanner.ScannerViewModel].
+ */
+interface OcrRecognizer {
+    suspend fun initialize(): Result<Unit>
+    suspend fun recognize(roiBitmap: Bitmap): OcrResult
+    suspend fun close()
+}
+
+/**
  * Moteur OCR Aurebesh encapsulant [TessBaseAPI] de manière thread-safe.
  *
  * Caractéristiques clés :
@@ -22,7 +32,7 @@ import kotlinx.coroutines.withContext
 class AurebeshOcrEngine(
     private val tessDataManager: TessDataManager,
     private val ocrDispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1)
-) {
+) : OcrRecognizer {
 
     private val mutex = Mutex()
     private var tessBaseApi: TessBaseAPI? = null
@@ -31,7 +41,7 @@ class AurebeshOcrEngine(
     /**
      * Initialise le moteur Tesseract avec le modèle `aurebesh.traineddata`.
      */
-    suspend fun initialize(): Result<Unit> = withContext(ocrDispatcher) {
+    override suspend fun initialize(): Result<Unit> = withContext(ocrDispatcher) {
         mutex.withLock {
             if (isInitialized && tessBaseApi != null) {
                 return@withLock Result.success(Unit)
@@ -57,7 +67,7 @@ class AurebeshOcrEngine(
      *
      * @param roiBitmap Bitmap découpé de la zone de visée.
      */
-    suspend fun recognize(roiBitmap: Bitmap): OcrResult = withContext(ocrDispatcher) {
+    override suspend fun recognize(roiBitmap: Bitmap): OcrResult = withContext(ocrDispatcher) {
         mutex.withLock {
             if (!isInitialized || tessBaseApi == null) {
                 val initResult = initializeInternalUnlocked()
@@ -126,7 +136,7 @@ class AurebeshOcrEngine(
      * Libère les ressources natives C++ de Tesseract.
      * Doit être appelé dans `ViewModel.onCleared()`.
      */
-    suspend fun close() = withContext(ocrDispatcher) {
+    override suspend fun close() = withContext(ocrDispatcher) {
         mutex.withLock {
             tessBaseApi?.recycle()
             tessBaseApi = null

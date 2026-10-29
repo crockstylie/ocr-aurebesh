@@ -9,6 +9,7 @@ import fr.antoinehory.ocraurebesh.data.local.AppDatabase
 import fr.antoinehory.ocraurebesh.data.repository.ScanHistoryRepository
 import fr.antoinehory.ocraurebesh.domain.OcrResult
 import fr.antoinehory.ocraurebesh.ocr.AurebeshOcrEngine
+import fr.antoinehory.ocraurebesh.ocr.OcrRecognizer
 import fr.antoinehory.ocraurebesh.ocr.TessDataManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,7 +29,7 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ScannerViewModel(
-    private val ocrEngine: AurebeshOcrEngine,
+    private val ocrEngine: OcrRecognizer,
     private val historyRepository: ScanHistoryRepository,
 ) : ViewModel() {
 
@@ -40,7 +41,7 @@ class ScannerViewModel(
         coroutineScope = viewModelScope,
         isPausedProvider = { _uiState.value.isPaused },
         roiFraction = _uiState.value.roiFraction,
-        onResult = ::handleOcrResult,
+        onResult = ::onOcrResult,
     )
 
     init {
@@ -160,7 +161,7 @@ class ScannerViewModel(
         }
     }
 
-    private fun handleOcrResult(result: OcrResult) {
+    internal fun onOcrResult(result: OcrResult) {
         when (result) {
             is OcrResult.Success -> {
                 _uiState.update { state ->
