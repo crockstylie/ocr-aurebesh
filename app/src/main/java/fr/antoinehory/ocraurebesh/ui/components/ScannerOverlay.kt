@@ -5,26 +5,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.unit.dp
 import fr.antoinehory.ocraurebesh.ocr.RoiRectFraction
 
 /**
- * Superposition graphique (Overlay) dessinant le masque semi-transparent et le viseur HUD
- * délimitant la région d'intérêt ([roiFraction]).
- *
- * Utilise `Modifier.drawWithCache` (conformément au skill `jetpack-compose-performance`)
- * pour mettre en cache le [Path] de découpe et éviter toute allocation pendant la phase de dessin.
+ * Superposition graphique épurée dessinant uniquement les 4 repères d'angle HUD
+ * délimitant la zone plein écran analysée ([roiFraction]), sans assombrir l'image.
  */
 @Composable
 fun ScannerOverlay(
@@ -34,9 +25,9 @@ fun ScannerOverlay(
     modifier: Modifier = Modifier,
 ) {
     val accentColor = when {
-        isPaused -> Color(0xFFFFB300)          // Ambre : Scan figé / en pause
+        isPaused -> Color(0xFFFFB300)          // Ambre : Image figée
         hasRecognizedText -> Color(0xFF00E676) // Vert émeraude : Texte Aurebesh détecté
-        else -> Color(0xFF00E5FF)              // Cyan hologramme : En attente / visée
+        else -> Color(0xFF00E5FF)              // Cyan hologramme : Scan actif
     }
 
     Spacer(
@@ -48,9 +39,7 @@ fun ScannerOverlay(
                 val roiWidth = size.width * roiFraction.widthFraction
                 val roiHeight = size.height * roiFraction.heightFraction
 
-                val cornerRadiusPx = 16.dp.toPx()
-                val strokeWidthPx = 2.dp.toPx()
-                val bracketThicknessPx = 4.dp.toPx()
+                val bracketThicknessPx = 3.5.dp.toPx()
                 val bracketLengthPx = 28.dp.toPx()
 
                 val roiRect = Rect(
@@ -58,33 +47,7 @@ fun ScannerOverlay(
                     size = Size(roiWidth, roiHeight),
                 )
 
-                val cutoutPath = Path().apply {
-                    addRoundRect(
-                        RoundRect(
-                            rect = roiRect,
-                            cornerRadius = CornerRadius(cornerRadiusPx, cornerRadiusPx),
-                        )
-                    )
-                }
-
-                val borderStroke = Stroke(width = strokeWidthPx)
-
                 onDrawBehind {
-                    // 1. Voile sombre extérieur avec découpe transparente sur la ROI
-                    clipPath(path = cutoutPath, clipOp = ClipOp.Difference) {
-                        drawRect(color = Color.Black.copy(alpha = 0.58f))
-                    }
-
-                    // 2. Contour subtil de la zone de visée
-                    drawRoundRect(
-                        color = accentColor.copy(alpha = 0.45f),
-                        topLeft = roiRect.topLeft,
-                        size = roiRect.size,
-                        cornerRadius = CornerRadius(cornerRadiusPx, cornerRadiusPx),
-                        style = borderStroke,
-                    )
-
-                    // 3. Coins de visée HUD Star Wars
                     val left = roiRect.left
                     val top = roiRect.top
                     val right = roiRect.right

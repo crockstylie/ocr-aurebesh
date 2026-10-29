@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,8 +18,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,11 +36,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -70,6 +69,7 @@ fun ScannerRoute(
             cameraPreviewContent = { previewModifier ->
                 CameraPreview(
                     analyzer = viewModel.imageAnalyzer,
+                    isPaused = uiState.isPaused,
                     isTorchEnabled = uiState.isTorchEnabled,
                     onFlashAvailabilityChanged = { available ->
                         viewModel.onEvent(ScannerUiEvent.OnFlashAvailabilityChanged(available))
@@ -86,6 +86,7 @@ fun ScannerRoute(
 
 /**
  * Écran principal de scan Aurebesh (stateless), conçu en Edge-to-Edge.
+ * Un tap n'importe où sur la vue caméra permet de figer ou reprendre l'image et la détection.
  */
 @Composable
 fun ScannerScreen(
@@ -111,11 +112,19 @@ fun ScannerScreen(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         containerColor = Color.Black,
     ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize()) {
-            // 1. Flux caméra plein écran (Edge-to-Edge)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = { onEvent(ScannerUiEvent.TogglePause) }
+                    )
+                }
+        ) {
+            // 1. Flux caméra plein écran (se fige visuellement lorsque isPaused == true)
             cameraPreviewContent(Modifier.fillMaxSize())
 
-            // 2. Viseur HUD (ROI) dessiné avec drawWithCache
+            // 2. Coins de visée HUD plein écran dessinés avec drawWithCache
             ScannerOverlay(
                 roiFraction = uiState.roiFraction,
                 isPaused = uiState.isPaused,
@@ -123,7 +132,7 @@ fun ScannerScreen(
                 modifier = Modifier.fillMaxSize(),
             )
 
-            // 3. Contrôles supérieurs et carte de traduction inférieure dans les marges système (safeDrawing)
+            // 3. Contrôles supérieurs et carte de traduction inférieure épurée
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -144,8 +153,6 @@ fun ScannerScreen(
 
                 TranslationResultCard(
                     recognizedText = uiState.recognizedText,
-                    confidence = uiState.confidence,
-                    wasAutoInverted = uiState.wasAutoInverted,
                     isPaused = uiState.isPaused,
                     onTogglePause = { onEvent(ScannerUiEvent.TogglePause) },
                     onSaveScan = { onEvent(ScannerUiEvent.SaveCurrentScan) },
@@ -191,79 +198,57 @@ private fun ScannerTopBar(
     onOpenHistory: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
+    Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = Color.Black.copy(alpha = 0.65f),
         ) {
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = Color.Black.copy(alpha = 0.65f),
-            ) {
-                val statusText = when {
-                    !isOcrReady -> "Initialisation OCR..."
-                    isPaused -> "Scan figé"
-                    else -> "Scan Aurebesh actif"
-                }
-                Text(
-                    text = statusText,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color.White,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                )
+            val statusText = when {
+                !isOcrReady -> "Initialisation OCR..."
+                isPaused -> "Image figée ( toucher pour reprendre )"
+                else -> "Scan Aurebesh actif"
             }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (isFlashAvailable) {
-                    FilledTonalButton(
-                        onClick = onToggleTorch,
-                        modifier = Modifier.semantics(mergeDescendants = true) {},
-                    ) {
-                        Text(if (isTorchEnabled) "Torche ON" else "Torche OFF")
-                    }
-                }
-
-                FilledTonalButton(
-                    onClick = onOpenHistory,
-                    modifier = Modifier.semantics(mergeDescendants = true) {},
-                ) {
-                    Text(
-                        text = if (historyCount > 0) {
-                            "Historique ($historyCount)"
-                        } else {
-                            "Historique"
-                        }
-                    )
-                }
-            }
+            Text(
+                text = statusText,
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (isFlashAvailable) {
+                FilledTonalButton(
+                    onClick = onToggleTorch,
+                    modifier = Modifier.semantics(mergeDescendants = true) {},
+                ) {
+                    Text(if (isTorchEnabled) "Torche ON" else "Torche OFF")
+                }
+            }
 
-        Text(
-            text = "Alignez l'inscription Aurebesh dans le cadre",
-            style = MaterialTheme.typography.bodySmall,
-            color = Color.White.copy(alpha = 0.85f),
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .background(
-                    color = Color.Black.copy(alpha = 0.45f),
-                    shape = RoundedCornerShape(12.dp),
+            FilledTonalButton(
+                onClick = onOpenHistory,
+                modifier = Modifier.semantics(mergeDescendants = true) {},
+            ) {
+                Text(
+                    text = if (historyCount > 0) {
+                        "Historique ($historyCount)"
+                    } else {
+                        "Historique"
+                    }
                 )
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-        )
+            }
+        }
     }
 }
 
 @Composable
 private fun TranslationResultCard(
     recognizedText: String,
-    confidence: Int,
-    wasAutoInverted: Boolean,
     isPaused: Boolean,
     onTogglePause: () -> Unit,
     onSaveScan: () -> Unit,
@@ -285,35 +270,6 @@ private fun TranslationResultCard(
                 .fillMaxWidth()
                 .padding(20.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "TRADUCTION BASIC (LATIN)",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
-                )
-
-                if (hasText) {
-                    val polarityLabel = if (wasAutoInverted) "Fond sombre auto" else "Fond clair auto"
-                    AssistChip(
-                        onClick = {},
-                        enabled = false,
-                        label = {
-                            Text("$confidence% • $polarityLabel")
-                        },
-                        colors = AssistChipDefaults.assistChipColors(
-                            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        ),
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
             Text(
                 text = if (hasText) {
                     recognizedText

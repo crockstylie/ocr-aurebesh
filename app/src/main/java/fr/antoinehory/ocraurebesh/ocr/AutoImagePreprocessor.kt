@@ -12,13 +12,14 @@ import kotlin.math.roundToInt
 
 /**
  * Coordonnées relatives (entre 0f et 1f) de la zone de visée (ROI - Region of Interest).
+ * Par défaut, couvre toute la surface utile de l'écran entre la barre supérieure et la carte de traduction.
  */
 @Immutable
 data class RoiRectFraction(
-    val leftFraction: Float = 0.08f,
-    val topFraction: Float = 0.38f,
-    val widthFraction: Float = 0.84f,
-    val heightFraction: Float = 0.18f,
+    val leftFraction: Float = 0.04f,
+    val topFraction: Float = 0.10f,
+    val widthFraction: Float = 0.92f,
+    val heightFraction: Float = 0.66f,
 )
 
 /**
@@ -62,7 +63,8 @@ object AutoImagePreprocessor {
 
     internal const val COLOR_BLACK = -0x1000000 // 0xFF000000
     internal const val COLOR_WHITE = -0x1       // 0xFFFFFFFF
-    private const val TARGET_ROI_HEIGHT_PX = 112
+    private const val FULL_SCREEN_REFERENCE_HEIGHT_PX = 560
+    private const val MIN_TARGET_ROI_HEIGHT_PX = 112
     private const val PADDING_PX = 16
 
     /**
@@ -93,13 +95,11 @@ object AutoImagePreprocessor {
 
         val imageAspect = w.toFloat() / max(1, h).toFloat()
         if (viewportAspectRatio > 0.05f && imageAspect > viewportAspectRatio) {
-            // L'image capteur est plus large que l'écran : FILL_CENTER coupe à gauche et à droite
             visibleHeight = h.toFloat()
             visibleWidth = h * viewportAspectRatio
             visibleLeft = (w - visibleWidth) * 0.5f
             visibleTop = 0f
         } else if (viewportAspectRatio > 0.05f && imageAspect < viewportAspectRatio) {
-            // L'image capteur est plus haute que l'écran : FILL_CENTER coupe en haut et en bas
             visibleWidth = w.toFloat()
             visibleHeight = w / viewportAspectRatio
             visibleLeft = 0f
@@ -129,11 +129,15 @@ object AutoImagePreprocessor {
             orientedBitmap.recycle()
         }
 
-        // Normalisation de la hauteur vers ~112px pour stabiliser la taille des glyphes pour Tesseract LSTM
-        if (cropped.height > TARGET_ROI_HEIGHT_PX * 1.35f) {
-            val scale = TARGET_ROI_HEIGHT_PX.toFloat() / cropped.height.toFloat()
+        // Hauteur cible proportionnelle à la fraction d'écran analysée pour conserver la taille des glyphes
+        val targetHeightPx = (FULL_SCREEN_REFERENCE_HEIGHT_PX * roiFraction.heightFraction)
+            .roundToInt()
+            .coerceIn(MIN_TARGET_ROI_HEIGHT_PX, FULL_SCREEN_REFERENCE_HEIGHT_PX)
+
+        if (cropped.height > targetHeightPx * 1.25f) {
+            val scale = targetHeightPx.toFloat() / cropped.height.toFloat()
             val scaledW = max(32, (cropped.width * scale).roundToInt())
-            val scaled = Bitmap.createScaledBitmap(cropped, scaledW, TARGET_ROI_HEIGHT_PX, true)
+            val scaled = Bitmap.createScaledBitmap(cropped, scaledW, targetHeightPx, true)
             if (scaled !== cropped && cropped !== source) {
                 cropped.recycle()
             }
@@ -280,8 +284,8 @@ object AutoImagePreprocessor {
             }
         }
 
-        val windowRadius = max(6, min(width, height) / 4)
-        val localContrastDelta = 11
+        val windowRadius = max(6, min(28, min(width, height) / 2))
+        val localContrastDelta = 14
 
         val darkOnLightPixels = IntArray(totalPixels)
         val lightOnDarkPixels = IntArray(totalPixels)
@@ -305,16 +309,13 @@ object AutoImagePreprocessor {
                 val g = grayValues[rowOffset + x]
 
                 // Candidat Texte Sombre sur Fond Clair :
-                // Le pixel est sombre localement (sous la moyenne locale) OU nettement sous le seuil d'Otsu
-                val isDarkGlyph =
-                    (g <= localMean - localContrastDelta && g <= threshold + 25) ||
-                        (g <= threshold - 15)
+                // Seuls les traits présentant un vrai contraste local négatif deviennent noirs
+                // (les grandes zones sombres uniformes du décor sont ainsi ignorées en plein écran)
+                val isDarkGlyph = g <= localMean - localContrastDelta
 
                 // Candidat Texte Clair sur Fond Sombre (écran, hologramme, néon) :
-                // Le pixel est lumineux localement (au-dessus de la moyenne locale) OU nettement au-dessus d'Otsu
-                val isLightGlyph =
-                    (g >= localMean + localContrastDelta && g >= threshold - 25) ||
-                        (g >= threshold + 15)
+                // Seuls les traits présentant un vrai contraste local positif deviennent noirs
+                val isLightGlyph = g >= localMean + localContrastDelta
 
                 darkOnLightPixels[rowOffset + x] = if (isDarkGlyph) COLOR_BLACK else COLOR_WHITE
                 lightOnDarkPixels[rowOffset + x] = if (isLightGlyph) COLOR_BLACK else COLOR_WHITE

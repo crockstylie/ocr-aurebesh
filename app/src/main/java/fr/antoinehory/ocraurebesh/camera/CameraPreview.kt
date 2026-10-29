@@ -1,5 +1,6 @@
 package fr.antoinehory.ocraurebesh.camera
 
+import android.graphics.Bitmap
 import android.util.Size
 import android.view.View
 import android.view.ViewGroup
@@ -12,6 +13,9 @@ import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -21,7 +25,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -31,15 +38,14 @@ import java.util.concurrent.Executors
  * Composable affichant le flux caméra via [PreviewView] et attachant les cas d'utilisation
  * [Preview] et [ImageAnalysis] (en haute définition `1280x720`+) au [LocalLifecycleOwner].
  *
- * @param analyzer Instance de [AurebeshImageAnalyzer] recevant les frames en mode `STRATEGY_KEEP_ONLY_LATEST`.
- * @param isTorchEnabled État souhaité de la lampe torche.
- * @param onFlashAvailabilityChanged Callback indiquant si l'appareil dispose d'un flash matériel.
- * @param onCameraError Callback invoqué si l'initialisation CameraX échoue.
- * @param modifier [Modifier] appliqué au conteneur [AndroidView].
+ * Gère également :
+ * - Le maintien de l'écran allumé (`keepScreenOn`) tant que le scan est actif.
+ * - Le gel visuel instantané de l'image caméra lorsque [isPaused] passe à `true`.
  */
 @Composable
 fun CameraPreview(
     analyzer: AurebeshImageAnalyzer,
+    isPaused: Boolean,
     isTorchEnabled: Boolean,
     onFlashAvailabilityChanged: (Boolean) -> Unit,
     onCameraError: (String) -> Unit,
@@ -47,9 +53,18 @@ fun CameraPreview(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val currentView = LocalView.current
 
     val currentFlashCallback by rememberUpdatedState(onFlashAvailabilityChanged)
     val currentErrorCallback by rememberUpdatedState(onCameraError)
+
+    // Maintient l'écran allumé tant que l'utilisateur est sur le scanner
+    DisposableEffect(currentView) {
+        currentView.keepScreenOn = true
+        onDispose {
+            currentView.keepScreenOn = false
+        }
+    }
 
     val previewView = remember {
         PreviewView(context).apply {
@@ -59,6 +74,25 @@ fun CameraPreview(
             )
             scaleType = PreviewView.ScaleType.FILL_CENTER
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        }
+    }
+
+    // Capture et affiche la frame figée lorsque l'utilisateur met en pause en tapant sur l'écran
+    var frozenFrameBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+    LaunchedEffect(isPaused) {
+        if (isPaused) {
+            frozenFrameBitmap = previewView.bitmap
+        } else {
+            frozenFrameBitmap?.recycle()
+            frozenFrameBitmap = null
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            frozenFrameBitmap?.recycle()
+            frozenFrameBitmap = null
         }
     }
 
@@ -160,8 +194,20 @@ fun CameraPreview(
         }
     }
 
-    AndroidView(
-        factory = { previewView },
-        modifier = modifier,
-    )
+    Box(modifier = modifier) {
+        AndroidView(
+            factory = { previewView },
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        val currentFrozen = frozenFrameBitmap
+        if (isPaused && currentFrozen != null && !currentFrozen.isRecycled) {
+            Image(
+                bitmap = currentFrozen.asImageBitmap(),
+                contentDescription = "Image caméra figée",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
 }
