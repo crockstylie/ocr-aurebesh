@@ -59,6 +59,7 @@ import fr.antoinehory.ocraurebesh.camera.CameraPreview
 import fr.antoinehory.ocraurebesh.ui.components.CameraPermissionGate
 import fr.antoinehory.ocraurebesh.ui.components.HudIcons
 import fr.antoinehory.ocraurebesh.ui.components.ScannerOverlay
+import fr.antoinehory.ocraurebesh.ui.generator.AurebeshGeneratorActivity
 import fr.antoinehory.ocraurebesh.ui.history.ScanHistorySheet
 import fr.antoinehory.ocraurebesh.ui.theme.HudAmber
 import fr.antoinehory.ocraurebesh.ui.theme.HudAmberDim
@@ -89,6 +90,14 @@ fun ScannerRoute(
             uiState = uiState,
             onEvent = viewModel::onEvent,
             onCopyText = { text -> copyToClipboard(context, text) },
+            onOpenGenerator = {
+                context.startActivity(
+                    AurebeshGeneratorActivity.createIntent(
+                        context = context,
+                        initialText = uiState.recognizedText,
+                    )
+                )
+            },
             cameraPreviewContent = { previewModifier ->
                 CameraPreview(
                     analyzer = viewModel.imageAnalyzer,
@@ -116,6 +125,7 @@ fun ScannerScreen(
     uiState: ScannerUiState,
     onEvent: (ScannerUiEvent) -> Unit,
     onCopyText: (String) -> Unit,
+    onOpenGenerator: () -> Unit,
     cameraPreviewContent: @Composable (Modifier) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -155,6 +165,7 @@ fun ScannerScreen(
                     uiState = uiState,
                     onEvent = onEvent,
                     onCopyText = onCopyText,
+                    onOpenGenerator = onOpenGenerator,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
@@ -166,6 +177,7 @@ fun ScannerScreen(
                     uiState = uiState,
                     onEvent = onEvent,
                     onCopyText = onCopyText,
+                    onOpenGenerator = onOpenGenerator,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
@@ -207,6 +219,7 @@ private fun ScannerPortraitLayout(
     uiState: ScannerUiState,
     onEvent: (ScannerUiEvent) -> Unit,
     onCopyText: (String) -> Unit,
+    onOpenGenerator: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -221,6 +234,7 @@ private fun ScannerPortraitLayout(
             historyCount = uiState.historyRecords.size,
             onTogglePause = { onEvent(ScannerUiEvent.TogglePause) },
             onToggleTorch = { onEvent(ScannerUiEvent.ToggleTorch) },
+            onOpenGenerator = onOpenGenerator,
             onOpenHistory = { onEvent(ScannerUiEvent.SetHistorySheetVisible(true)) },
         )
 
@@ -257,6 +271,7 @@ private fun ScannerLandscapeLayout(
     uiState: ScannerUiState,
     onEvent: (ScannerUiEvent) -> Unit,
     onCopyText: (String) -> Unit,
+    onOpenGenerator: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -299,6 +314,13 @@ private fun ScannerLandscapeLayout(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HudCircleIconButton(
+                        icon = HudIcons.Edit,
+                        contentDescription = "Studio Aurebesh",
+                        tint = HudCyan,
+                        onClick = onOpenGenerator,
+                    )
+
                     HudCircleIconButton(
                         icon = if (uiState.isPaused) HudIcons.Play else HudIcons.Pause,
                         contentDescription = if (uiState.isPaused) "Reprendre" else "Figer",
@@ -407,6 +429,7 @@ private fun ScannerTopHudBar(
     historyCount: Int,
     onTogglePause: () -> Unit,
     onToggleTorch: () -> Unit,
+    onOpenGenerator: () -> Unit,
     onOpenHistory: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -425,6 +448,13 @@ private fun ScannerTopHudBar(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            HudCircleIconButton(
+                icon = HudIcons.Edit,
+                contentDescription = "Studio Aurebesh",
+                tint = HudCyan,
+                onClick = onOpenGenerator,
+            )
+
             if (isFlashAvailable) {
                 HudCircleIconButton(
                     icon = if (isTorchEnabled) HudIcons.FlashOn else HudIcons.FlashOff,
@@ -719,6 +749,7 @@ private fun ScannerScreenPortraitPreview() {
             ),
             onEvent = {},
             onCopyText = {},
+            onOpenGenerator = {},
             cameraPreviewContent = { mod ->
                 Box(modifier = mod.background(Color(0xFF0B1520)))
             },
@@ -742,6 +773,7 @@ private fun ScannerScreenLandscapePreview() {
             ),
             onEvent = {},
             onCopyText = {},
+            onOpenGenerator = {},
             cameraPreviewContent = { mod ->
                 Box(modifier = mod.background(Color(0xFF0B1520)))
             },
