@@ -35,6 +35,44 @@ class PreprocessedImages(
     val wasAutoInverted: Boolean,
     val primaryInkRatio: Float,
     val invertedInkRatio: Float,
+    val lineCandidates: List<OcrCandidate> = emptyList(),
+) {
+    fun recycleAll() {
+        primaryBitmap.recycle()
+        invertedBitmap.recycle()
+        lineCandidates.forEach { it.bitmap.recycle() }
+    }
+}
+
+/**
+ * Image candidate « nettoyée » par [TextLineFilter] : seules les lignes de glyphes alignés sont conservées,
+ * recadrées sur la zone de texte (le décor et les illustrations sont supprimés).
+ *
+ * @property wasInverted `true` si le texte était plus clair (ou plus « chaud ») que son fond.
+ * @property alignedGlyphCount nombre de glyphes alignés détectés (indice de confiance structurel).
+ */
+class OcrCandidate(
+    val bitmap: Bitmap,
+    val wasInverted: Boolean,
+    val alignedGlyphCount: Int,
+)
+
+/**
+ * Région de texte détectée sur un canal donné, avant conversion en [Bitmap] (testable en JVM).
+ */
+internal class LineRegionCandidate(
+    val region: TextRegion,
+    val wasInverted: Boolean,
+)
+
+/**
+ * Masques binaires (`true` = encre) issus du seuillage adaptatif multi-échelle d'un canal.
+ */
+internal class AdaptiveMasks(
+    val darkMask: BooleanArray,
+    val lightMask: BooleanArray,
+    val darkCount: Int,
+    val lightCount: Int,
 )
 
 /**
@@ -48,6 +86,8 @@ internal class PreprocessedPixelBuffers(
     val wasAutoInverted: Boolean,
     val primaryInkRatio: Float,
     val invertedInkRatio: Float,
+    val darkMask: BooleanArray = BooleanArray(0),
+    val lightMask: BooleanArray = BooleanArray(0),
 )
 
 /**
@@ -73,6 +113,9 @@ object AutoImagePreprocessor {
     private const val FULL_SCREEN_REFERENCE_HEIGHT_PX = 1080
     private const val MIN_TARGET_ROI_HEIGHT_PX = 180
     private const val PADDING_PX = 16
+    private const val MAX_LINE_CANDIDATES = 2
+    // Écart minimal (2e - 98e percentile) du canal chaud/froid pour justifier son analyse
+    private const val MIN_WARM_COOL_SPREAD = 20
 
     /**
      * Applique la rotation du capteur et découpe la région d'intérêt (ROI) de la frame
@@ -171,14 +214,96 @@ object AutoImagePreprocessor {
         val primaryBitmap = createPaddedBitmap(buffers.primaryPixels, width, height)
         val invertedBitmap = createPaddedBitmap(buffers.invertedPixels, width, height)
 
+        val lineCandidates = extractLineRegions(argbPixels, width, height, buffers).map { candidate ->
+            val region = candidate.region
+            OcrCandidate(
+                bitmap = createPaddedBitmap(maskToArgb(region.mask), region.width, region.height),
+                wasInverted = candidate.wasInverted,
+                alignedGlyphCount = region.alignedGlyphCount,
+            )
+        }
+
         return PreprocessedImages(
             primaryBitmap = primaryBitmap,
             invertedBitmap = invertedBitmap,
             wasAutoInverted = buffers.wasAutoInverted,
             primaryInkRatio = buffers.primaryInkRatio,
             invertedInkRatio = buffers.invertedInkRatio,
+            lineCandidates = lineCandidates,
         )
     }
+
+    /**
+     * Recherche des lignes de texte sur 4 sources complémentaires :
+     * - luminance : texte sombre sur fond clair / texte clair sur fond sombre (néons, écrans) ;
+     * - canal chaud/froid `(R+G)/2 - B` : texte doré/jaune/orange sur fond bleu (et inversement),
+     *   indispensable lorsque texte et fond ont **la même luminosité** (ex. lettres dorées peintes sur bleu).
+     *
+     * Seules les [MAX_LINE_CANDIDATES] sources présentant le plus de glyphes alignés sont conservées.
+     */
+    internal fun extractLineRegions(
+        argbPixels: IntArray,
+        width: Int,
+        height: Int,
+        lumaBuffers: PreprocessedPixelBuffers,
+    ): List<LineRegionCandidate> {
+        val sources = mutableListOf<Pair<BooleanArray, Boolean>>()
+        if (lumaBuffers.darkMask.size == width * height) {
+            sources.add(lumaBuffers.darkMask to false)
+            sources.add(lumaBuffers.lightMask to true)
+        }
+        computeWarmCoolMasks(argbPixels, width, height)?.let { warmCool ->
+            sources.add(warmCool.lightMask to true)  // Texte chaud (doré) sur fond froid (bleu)
+            sources.add(warmCool.darkMask to false)  // Texte froid (bleu) sur fond chaud
+        }
+
+        return sources
+            .mapNotNull { (mask, inverted) ->
+                TextLineFilter.extract(mask, width, height)?.let { LineRegionCandidate(it, inverted) }
+            }
+            .sortedByDescending { it.region.alignedGlyphCount }
+            .take(MAX_LINE_CANDIDATES)
+    }
+
+    /**
+     * Calcule les masques adaptatifs sur le canal d'opposition chaud/froid `(R+G)/2 - B`.
+     * Retourne `null` si l'image est quasi neutre (niveaux de gris) : ce canal n'apporterait rien.
+     */
+    internal fun computeWarmCoolMasks(argbPixels: IntArray, width: Int, height: Int): AdaptiveMasks? {
+        val totalPixels = width * height
+        val raw = IntArray(totalPixels)
+        val histogram = IntArray(256)
+        for (i in 0 until totalPixels) {
+            val pixel = argbPixels[i]
+            val r = (pixel shr 16) and 0xFF
+            val g = (pixel shr 8) and 0xFF
+            val b = pixel and 0xFF
+            val warmCool = ((((r + g) shr 1) - b) + 256) shr 1 // -255..255 -> 0..255
+            val v = warmCool.coerceIn(0, 255)
+            raw[i] = v
+            histogram[v]++
+        }
+
+        val p2 = percentile(histogram, totalPixels, 0.02f)
+        val p98 = percentile(histogram, totalPixels, 0.98f)
+        if (p98 - p2 < MIN_WARM_COOL_SPREAD) return null
+
+        val enhanced = enhanceChannel(raw, histogram, width, height)
+        return computeAdaptiveMasks(enhanced, width, height)
+    }
+
+    private fun percentile(histogram: IntArray, totalPixels: Int, fraction: Float): Int {
+        val target = max(1, (totalPixels * fraction).roundToInt())
+        var accumulated = 0
+        for (i in 0..255) {
+            accumulated += histogram[i]
+            if (accumulated >= target) return i
+        }
+        return 255
+    }
+
+    private fun maskToArgb(mask: BooleanArray): IntArray =
+        IntArray(mask.size) { i -> if (mask[i]) COLOR_BLACK else COLOR_WHITE }
 
     private fun createPaddedBitmap(pixels: IntArray, width: Int, height: Int): Bitmap {
         val paddedW = width + PADDING_PX * 2
@@ -217,8 +342,76 @@ object AutoImagePreprocessor {
             rawHistogram[luma]++
         }
 
-        // 2. Étirement d'histogramme entre les percentiles 0.05 % et 99.95 %
-        //    (permet de capter même un petit mot ou des lettres en mode contour couvrant < 0.2 % de la ROI)
+        // 2-3. Étirement d'histogramme, lissage et rehaussement de netteté
+        val grayValues = enhanceChannel(rawGray, rawHistogram, width, height)
+
+        val normalizedHistogram = IntArray(256)
+        for (i in 0 until totalPixels) {
+            normalizedHistogram[grayValues[i]]++
+        }
+
+        // 4. Calcul du seuil global d'Otsu
+        val threshold = computeOtsuThreshold(normalizedHistogram, totalPixels)
+
+        // 5. Détection automatique de la polarité (analyse de la couronne périphérique de la ROI)
+        var darkBorderPixels = 0
+        var totalBorderPixels = 0
+        val borderBandX = max(1, width / 12)
+        val borderBandY = max(1, height / 8)
+
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val isInBorderBand =
+                    x < borderBandX || x >= width - borderBandX ||
+                        y < borderBandY || y >= height - borderBandY
+                if (isInBorderBand) {
+                    if (grayValues[y * width + x] <= threshold) {
+                        darkBorderPixels++
+                    }
+                    totalBorderPixels++
+                }
+            }
+        }
+
+        val shouldInvert = totalBorderPixels > 0 && (darkBorderPixels * 2 > totalBorderPixels)
+
+        // 6. Seuillage adaptatif multi-échelle (Image Intégrale)
+        val masks = computeAdaptiveMasks(grayValues, width, height)
+
+        val darkOnLightPixels = IntArray(totalPixels) { i -> if (masks.darkMask[i]) COLOR_BLACK else COLOR_WHITE }
+        val lightOnDarkPixels = IntArray(totalPixels) { i -> if (masks.lightMask[i]) COLOR_BLACK else COLOR_WHITE }
+
+        val darkInkRatio = masks.darkCount.toFloat() / totalPixels.toFloat()
+        val lightInkRatio = masks.lightCount.toFloat() / totalPixels.toFloat()
+
+        val primaryPixels = if (shouldInvert) lightOnDarkPixels else darkOnLightPixels
+        val invertedPixels = if (shouldInvert) darkOnLightPixels else lightOnDarkPixels
+        val primaryInkRatio = if (shouldInvert) lightInkRatio else darkInkRatio
+        val invertedInkRatio = if (shouldInvert) darkInkRatio else lightInkRatio
+
+        return PreprocessedPixelBuffers(
+            primaryPixels = primaryPixels,
+            invertedPixels = invertedPixels,
+            threshold = threshold,
+            wasAutoInverted = shouldInvert,
+            primaryInkRatio = primaryInkRatio,
+            invertedInkRatio = invertedInkRatio,
+            darkMask = masks.darkMask,
+            lightMask = masks.lightMask,
+        )
+    }
+
+    /**
+     * Étirement d'histogramme entre les percentiles 0.05 % et 99.95 % (plancher de dynamique à 48),
+     * lissage 3x3 puis rehaussement de netteté 5x5 si l'image présente une dynamique minimale.
+     */
+    private fun enhanceChannel(
+        rawGray: IntArray,
+        rawHistogram: IntArray,
+        width: Int,
+        height: Int,
+    ): IntArray {
+        val totalPixels = width * height
         val lowCutCount = max(1, (totalPixels * 0.0005f).roundToInt())
         val highCutCount = min(totalPixels, (totalPixels * 0.9995f).roundToInt())
 
@@ -252,46 +445,20 @@ object AutoImagePreprocessor {
             stretchedGray[i] = (128 + ((rawGray[i] - midLuma) * 255) / range).coerceIn(0, 255)
         }
 
-        // 3. Lissage 3x3 (suppression du grain 1px) suivi d'un rehaussement de netteté 5x5 (Unsharp Mask)
-        //    uniquement si l'image présente une dynamique minimale (actualRange >= 22).
         val smoothed = smooth3x3(stretchedGray, width, height)
-        val grayValues = if (actualRange >= 22) {
+        return if (actualRange >= 22) {
             sharpenEdges5x5(smoothed, width, height)
         } else {
             smoothed
         }
+    }
 
-        val normalizedHistogram = IntArray(256)
-        for (i in 0 until totalPixels) {
-            normalizedHistogram[grayValues[i]]++
-        }
-
-        // 4. Calcul du seuil global d'Otsu
-        val threshold = computeOtsuThreshold(normalizedHistogram, totalPixels)
-
-        // 5. Détection automatique de la polarité (analyse de la couronne périphérique de la ROI)
-        var darkBorderPixels = 0
-        var totalBorderPixels = 0
-        val borderBandX = max(1, width / 12)
-        val borderBandY = max(1, height / 8)
-
-        for (y in 0 until height) {
-            for (x in 0 until width) {
-                val isInBorderBand =
-                    x < borderBandX || x >= width - borderBandX ||
-                        y < borderBandY || y >= height - borderBandY
-                if (isInBorderBand) {
-                    if (grayValues[y * width + x] <= threshold) {
-                        darkBorderPixels++
-                    }
-                    totalBorderPixels++
-                }
-            }
-        }
-
-        val shouldInvert = totalBorderPixels > 0 && (darkBorderPixels * 2 > totalBorderPixels)
-
-        // 6. Construction de l'Image Intégrale pour le seuillage adaptatif multi-échelle
+    /**
+     * Binarisation adaptative multi-échelle par Image Intégrale :
+     * petit rayon (traits fins, contours évidés, petites lignes denses) + grand rayon (traits pleins épais).
+     */
+    private fun computeAdaptiveMasks(grayValues: IntArray, width: Int, height: Int): AdaptiveMasks {
+        val totalPixels = width * height
         val stride = width + 1
         val integral = LongArray(stride * (height + 1))
         for (y in 0 until height) {
@@ -306,14 +473,12 @@ object AutoImagePreprocessor {
         }
 
         val minDim = min(width, height)
-        // Fenêtre fine (petits caractères sur 20 lignes & lettres en mode contour où intérieur == fond)
         val smallRadius = max(4, min(8, minDim / 24))
-        // Fenêtre large (traits pleins moyens et grands caractères)
         val largeRadius = max(10, min(24, minDim / 2))
         val localContrastDelta = 18
 
-        val darkOnLightPixels = IntArray(totalPixels)
-        val lightOnDarkPixels = IntArray(totalPixels)
+        val darkMask = BooleanArray(totalPixels)
+        val lightMask = BooleanArray(totalPixels)
         var darkGlyphCount = 0
         var lightGlyphCount = 0
 
@@ -344,41 +509,27 @@ object AutoImagePreprocessor {
                 val largeMean = (lSum / lCount).toInt()
 
                 val g = grayValues[rowOffset + x]
-
-                // Détection multi-échelle :
-                // - smallMean capte les traits fins, contours évidés et petites lignes denses
-                // - largeMean capte le cœur des traits pleins épais sans les évider
                 val isDarkGlyph =
-                    (g <= smallMean - localContrastDelta) ||
-                        (g <= largeMean - localContrastDelta)
-
+                    (g <= smallMean - localContrastDelta) || (g <= largeMean - localContrastDelta)
                 val isLightGlyph =
-                    (g >= smallMean + localContrastDelta) ||
-                        (g >= largeMean + localContrastDelta)
+                    (g >= smallMean + localContrastDelta) || (g >= largeMean + localContrastDelta)
 
-                if (isDarkGlyph) darkGlyphCount++
-                if (isLightGlyph) lightGlyphCount++
-
-                darkOnLightPixels[rowOffset + x] = if (isDarkGlyph) COLOR_BLACK else COLOR_WHITE
-                lightOnDarkPixels[rowOffset + x] = if (isLightGlyph) COLOR_BLACK else COLOR_WHITE
+                if (isDarkGlyph) {
+                    darkMask[rowOffset + x] = true
+                    darkGlyphCount++
+                }
+                if (isLightGlyph) {
+                    lightMask[rowOffset + x] = true
+                    lightGlyphCount++
+                }
             }
         }
 
-        val darkInkRatio = darkGlyphCount.toFloat() / totalPixels.toFloat()
-        val lightInkRatio = lightGlyphCount.toFloat() / totalPixels.toFloat()
-
-        val primaryPixels = if (shouldInvert) lightOnDarkPixels else darkOnLightPixels
-        val invertedPixels = if (shouldInvert) darkOnLightPixels else lightOnDarkPixels
-        val primaryInkRatio = if (shouldInvert) lightInkRatio else darkInkRatio
-        val invertedInkRatio = if (shouldInvert) darkInkRatio else lightInkRatio
-
-        return PreprocessedPixelBuffers(
-            primaryPixels = primaryPixels,
-            invertedPixels = invertedPixels,
-            threshold = threshold,
-            wasAutoInverted = shouldInvert,
-            primaryInkRatio = primaryInkRatio,
-            invertedInkRatio = invertedInkRatio,
+        return AdaptiveMasks(
+            darkMask = darkMask,
+            lightMask = lightMask,
+            darkCount = darkGlyphCount,
+            lightCount = lightGlyphCount,
         )
     }
 
