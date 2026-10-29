@@ -12,13 +12,15 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.PathIterator
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.text.TextPaint
-import android.util.Base64
+import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Immutable
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -31,6 +33,7 @@ import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -46,8 +49,8 @@ data class ExportedAurebeshFile(
 )
 
 /**
- * Utilitaire d'export haute définition de compositions Aurebesh aux formats SVG, PNG et JPG
- * dans le dossier public `Téléchargements/OCRAurebesh` via [MediaStore.Downloads], avec
+ * Utilitaire d'export haute définition de compositions Aurebesh aux formats SVG (tracés vectorisés `<path>`),
+ * PNG et JPG dans le dossier public `Téléchargements/OCRAurebesh` via [MediaStore.Downloads], avec
  * notification système permettant d'ouvrir ou de partager directement le fichier généré.
  */
 object AurebeshImageExporter {
@@ -101,7 +104,7 @@ object AurebeshImageExporter {
                 resolver.openOutputStream(uri)?.use { outStream ->
                     when (format) {
                         AurebeshExportFormat.SVG -> {
-                            val svgContent = buildSelfContainedSvg(
+                            val svgContent = buildVectorizedPathsSvg(
                                 context = context,
                                 lines = lines,
                                 fontOption = fontOption,
@@ -353,10 +356,13 @@ object AurebeshImageExporter {
     }
 
     /**
-     * Génère un fichier SVG 100 % autonome en embarquant la police `.ttf` en Base64 (`@font-face`)
-     * afin que les glyphes Aurebesh s'affichent fidèlement sur n'importe quel appareil ou logiciel vectoriel.
+     * Génère un fichier SVG avec **tracés vectoriels (`<path d="..." />`)** ("Texte vectorisé" / "Create Outlines").
+     *
+     * Chaque glyphe Aurebesh est converti en courbes de Bézier SVG indépendantes via [Paint.getTextPath],
+     * ce qui permet d'ouvrir et de manipuler chaque lettre directement dans Adobe Illustrator, Inkscape
+     * ou Figma sans avoir besoin d'installer la moindre police sur l'ordinateur.
      */
-    private fun buildSelfContainedSvg(
+    private fun buildVectorizedPathsSvg(
         context: Context,
         lines: List<String>,
         fontOption: AurebeshFontOption,
@@ -370,6 +376,7 @@ object AurebeshImageExporter {
         val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             this.typeface = typeface
             this.textSize = fontSizePx
+            this.textAlign = Paint.Align.LEFT
         }
 
         val fontMetrics = textPaint.fontMetrics
@@ -382,71 +389,180 @@ object AurebeshImageExporter {
         val totalTextHeight = lineHeight * lines.size
         val svgHeight = max(180, (totalTextHeight + EXPORT_PADDING_PX * 2).roundToInt())
 
-        val fontBytes = context.assets.open(fontOption.assetPath).use { it.readBytes() }
-        val fontBase64 = Base64.encodeToString(fontBytes, Base64.NO_WRAP)
-        val isOtf = fontOption.assetPath.endsWith(".otf", ignoreCase = true)
-        val fontMime = if (isOtf) "font/otf" else "font/ttf"
-        val fontFormat = if (isOtf) "opentype" else "truetype"
-
         val textHex = argbToHex(textColorArgb)
         val bgHex = argbToHex(backgroundColorArgb)
 
-        val (anchorAttr, anchorX) = when (alignment) {
-            AurebeshTextAlignment.LEFT -> "start" to EXPORT_PADDING_PX.roundToInt()
-            AurebeshTextAlignment.CENTER -> "middle" to (svgWidth / 2)
-            AurebeshTextAlignment.RIGHT -> "end" to (svgWidth - EXPORT_PADDING_PX.roundToInt())
-        }
-
         return buildString {
             appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
-            appendLine("""<svg xmlns="http://www.w3.org/2000/svg" width="$svgWidth" height="$svgHeight" viewBox="0 0 $svgWidth $svgHeight">""")
-            appendLine("  <defs>")
-            appendLine("    <style>")
-            appendLine("      @font-face {")
-            appendLine("        font-family: '${fontOption.name}';")
-            appendLine("        src: url('data:$fontMime;base64,$fontBase64') format('$fontFormat');")
-            appendLine("      }")
-            appendLine("      .aur-text {")
-            appendLine("        font-family: '${fontOption.name}', sans-serif;")
-            appendLine("        font-size: ${fontSizePx.roundToInt()}px;")
-            appendLine("        fill: $textHex;")
-            appendLine("      }")
-            appendLine("    </style>")
-            appendLine("  </defs>")
+            appendLine(
+                """<svg xmlns="http://www.w3.org/2000/svg" width="$svgWidth" height="$svgHeight" viewBox="0 0 $svgWidth $svgHeight">"""
+            )
 
             if (!isBackgroundTransparent) {
-                appendLine("""  <rect width="100%" height="100%" rx="24" fill="$bgHex" />""")
+                appendLine("""  <rect id="background" width="$svgWidth" height="$svgHeight" rx="24" fill="$bgHex" />""")
             }
 
+            appendLine("""  <g id="aurebesh-outlines" fill="$textHex" fill-rule="nonzero">""")
+
             var currentBaselineY = EXPORT_PADDING_PX - fontMetrics.ascent
-            for (line in lines) {
-                val escaped = escapeXml(line)
-                appendLine(
-                    """  <text x="$anchorX" y="${currentBaselineY.roundToInt()}" text-anchor="$anchorAttr" class="aur-text" xml:space="preserve">$escaped</text>"""
-                )
+            val glyphPath = Path()
+
+            lines.forEachIndexed { lineIndex, line ->
+                if (line.isNotEmpty()) {
+                    val lineWidth = textPaint.measureText(line)
+                    val lineStartX = when (alignment) {
+                        AurebeshTextAlignment.LEFT -> EXPORT_PADDING_PX
+                        AurebeshTextAlignment.CENTER -> (svgWidth - lineWidth) / 2f
+                        AurebeshTextAlignment.RIGHT -> svgWidth - EXPORT_PADDING_PX - lineWidth
+                    }
+
+                    appendLine("""    <g id="line-${lineIndex + 1}">""")
+
+                    for (charIndex in line.indices) {
+                        val ch = line[charIndex]
+                        if (!ch.isWhitespace()) {
+                            val charX = lineStartX + textPaint.measureText(line, 0, charIndex)
+                            glyphPath.reset()
+                            textPaint.getTextPath(
+                                line,
+                                charIndex,
+                                charIndex + 1,
+                                charX,
+                                currentBaselineY,
+                                glyphPath,
+                            )
+                            val d = pathToSvgData(glyphPath)
+                            if (d.isNotEmpty()) {
+                                appendLine("""      <path d="$d" />""")
+                            }
+                        }
+                    }
+
+                    appendLine("    </g>")
+                }
                 currentBaselineY += lineHeight
             }
+
+            appendLine("  </g>")
             appendLine("</svg>")
         }
     }
+
+    /**
+     * Convertit un [Path] Android natif en chaîne de commandes SVG `d="M ... L ... Q ... C ... Z"`.
+     * - Sur Android 14+ (API 34+), utilise [Path.getPathIterator] pour extraire les courbes de Bézier exactes.
+     * - Sur Android 10–13 (API 29–33), utilise [Path.approximate] avec une tolérance fine (`0.15f`).
+     */
+    private fun pathToSvgData(path: Path): String {
+        if (path.isEmpty) return ""
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            pathToSvgDataApi34(path)
+        } else {
+            pathToSvgDataApproximate(path)
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    private fun pathToSvgDataApi34(path: Path): String {
+        val sb = StringBuilder()
+        val iterator = path.pathIterator
+        val pts = FloatArray(8)
+
+        while (iterator.hasNext()) {
+            when (iterator.next(pts, 0)) {
+                PathIterator.VERB_MOVE -> {
+                    appendCmd(sb, "M ${fmt(pts[0])} ${fmt(pts[1])}")
+                }
+
+                PathIterator.VERB_LINE -> {
+                    appendCmd(sb, "L ${fmt(pts[2])} ${fmt(pts[3])}")
+                }
+
+                PathIterator.VERB_QUAD -> {
+                    appendCmd(
+                        sb,
+                        "Q ${fmt(pts[2])} ${fmt(pts[3])} ${fmt(pts[4])} ${fmt(pts[5])}",
+                    )
+                }
+
+                PathIterator.VERB_CONIC -> {
+                    // Conversion d'une conique rationnelle en courbe quadratique SVG
+                    appendCmd(
+                        sb,
+                        "Q ${fmt(pts[2])} ${fmt(pts[3])} ${fmt(pts[4])} ${fmt(pts[5])}",
+                    )
+                }
+
+                PathIterator.VERB_CUBIC -> {
+                    appendCmd(
+                        sb,
+                        "C ${fmt(pts[2])} ${fmt(pts[3])} ${fmt(pts[4])} ${fmt(pts[5])} ${fmt(pts[6])} ${fmt(pts[7])}",
+                    )
+                }
+
+                PathIterator.VERB_CLOSE -> {
+                    appendCmd(sb, "Z")
+                }
+
+                PathIterator.VERB_DONE -> break
+            }
+        }
+        return sb.toString()
+    }
+
+    private fun pathToSvgDataApproximate(path: Path): String {
+        val approx = path.approximate(0.15f)
+        if (approx.size < 6) return ""
+
+        val sb = StringBuilder()
+        var contourStartX = 0f
+        var contourStartY = 0f
+        var prevX = Float.NaN
+        var prevY = Float.NaN
+        var hasOpenContour = false
+
+        var i = 0
+        while (i <= approx.size - 3) {
+            val fraction = approx[i]
+            val x = approx[i + 1]
+            val y = approx[i + 2]
+
+            if (fraction == 0f && (i == 0 || approx[i - 3] > 0f)) {
+                if (hasOpenContour) {
+                    appendCmd(sb, "Z")
+                }
+                appendCmd(sb, "M ${fmt(x)} ${fmt(y)}")
+                contourStartX = x
+                contourStartY = y
+                prevX = x
+                prevY = y
+                hasOpenContour = true
+            } else if (hypot(x - prevX, y - prevY) > 0.05f) {
+                appendCmd(sb, "L ${fmt(x)} ${fmt(y)}")
+                prevX = x
+                prevY = y
+            }
+            i += 3
+        }
+
+        if (hasOpenContour && hypot(prevX - contourStartX, prevY - contourStartY) < 2f) {
+            appendCmd(sb, "Z")
+        }
+
+        return sb.toString()
+    }
+
+    private fun appendCmd(sb: StringBuilder, cmd: String) {
+        if (sb.isNotEmpty()) sb.append(' ')
+        sb.append(cmd)
+    }
+
+    private fun fmt(value: Float): String = String.format(Locale.US, "%.2f", value)
 
     private fun argbToHex(argb: Int): String {
         val r = (argb shr 16) and 0xFF
         val g = (argb shr 8) and 0xFF
         val b = argb and 0xFF
         return String.format(Locale.US, "#%02X%02X%02X", r, g, b)
-    }
-
-    private fun escapeXml(input: String): String = buildString(input.length) {
-        for (ch in input) {
-            when (ch) {
-                '&' -> append("&amp;")
-                '<' -> append("&lt;")
-                '>' -> append("&gt;")
-                '"' -> append("&quot;")
-                '\'' -> append("&apos;")
-                else -> append(ch)
-            }
-        }
     }
 }

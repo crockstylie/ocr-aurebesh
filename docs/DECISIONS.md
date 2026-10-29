@@ -75,7 +75,8 @@
 - **Décision** :
   1. **Activité dédiée (`AurebeshGeneratorActivity`)** : L'application démarre toujours sur `MainActivity` (Scanner). Un bouton HUD (`HudIcons.Edit`) dans `ScannerScreen` ouvre `AurebeshGeneratorActivity` (en pré-remplissant optionnellement le texte scanné en cours).
   2. **Normalisation des glyphes Aurebesh (`lowercase`)** : Dans les polices `Aurebesh.ttf`, `Aurebesh-Bold.ttf` et `Aurebesh-Condensed.ttf`, les minuscules (`a-z`) correspondent aux glyphes Aurebesh standards à l'endroit, tandis que les majuscules génèrent des glyphes inversés ("Capital Aurebesh"). Le rendu convertit donc systématiquement le texte latin en minuscules avant application de la police.
-  3. **Export SVG 100 % autonome (`AurebeshImageExporter`)** : Pour que le fichier `.svg` téléchargé affiche fidèlement l'Aurebesh sur n'importe quel appareil ou logiciel vectoriel sans avoir la police installée, le fichier `.ttf` sélectionné est encodé en Base64 et embarqué directement dans une balise `<style>@font-face { ... }</style>` au sein du SVG.
+  3. **Export SVG en tracés vectorisés (`<path d="..." />`) pour Adobe Illustrator (`AurebeshImageExporter`)** : Afin que le fichier `.svg` soit directement exploitable dans Adobe Illustrator, Inkscape ou Figma sans installer la police sur l'ordinateur, chaque glyphe Aurebesh est vectorisé en courbes de Bézier (`<path d="M ... Q ... C ... Z" />`) via `Paint.getTextPath` et `PathIterator` (API 34+) / `Path.approximate` (API 29–33).
   4. **Sauvegarde via `MediaStore.Downloads` & Notification Système avec Partage** : Les exports SVG, PNG et JPG sont enregistrés dans `Download/OCRAurebesh` via `MediaStore.Downloads.EXTERNAL_CONTENT_URI`, déclenchent une notification système (`NotificationCompat` avec aperçu `BigPictureStyle` pour PNG/JPG) proposant les actions **Partager** (`Intent.ACTION_SEND`) et **Ouvrir** (`Intent.ACTION_VIEW`), ainsi qu'un bouton **Partager** direct sur la Snackbar in-app.
+
 
 

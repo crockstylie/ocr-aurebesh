@@ -60,8 +60,9 @@ Légende : `[x]` Terminé | `[/]` En cours | `[ ]` À faire
 - [x] Intégration de 9 polices Aurebesh (`Regular`, `Bold`, `Italic`, `Condensed`, `Canon AF`, `Cantina`, `Droid`, `Droid Depot`, `Hand`) dans `app/src/main/assets/fonts/`
 - [x] Création de `AurebeshGeneratorActivity` accessible depuis un bouton HUD dans `ScannerScreen` (tout en conservant l'ouverture directe de l'application sur le scanner)
 - [x] Création de `AurebeshGeneratorScreen` épuré : barre supérieure sans titre, bouton Télécharger unique avec sous-menu (`SVG`, `PNG`, `JPG`), grand champ multi-lignes sans label, menu de style/couleurs rétractable à la demande, pastille damier blanc/gris DAO pour la transparence et Color Picker HSV interactif
-- [x] Export et téléchargement en **SVG** (avec police `.ttf`/`.otf` encodée en Base64 intégrée dans `@font-face`), **PNG** et **JPG** dans `Téléchargements/OCRAurebesh` via `MediaStore.Downloads`
+- [x] Export et téléchargement en **SVG vectorisé** (tracés de courbes `<path d="..." />` par caractère directement éditables dans Illustrator sans police installée), **PNG** et **JPG** dans `Téléchargements/OCRAurebesh` via `MediaStore.Downloads`
 - [x] Notification système de téléchargement avec aperçu de l'image et boutons d'action **Partager** / **Ouvrir** (`POST_NOTIFICATIONS` + `Intent.ACTION_SEND` / `Intent.ACTION_VIEW`)
+
 
 
 
