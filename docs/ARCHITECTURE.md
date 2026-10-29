@@ -74,6 +74,10 @@ fr.antoinehory.ocraurebesh/
 | `tools/tessdata-trainer/train_aurebesh.py` | Script reproductible de génération synthétique et d'entraînement LSTM Aurebesh | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/MainActivity.kt` | Activité hôte Jetpack Compose | Squelette initial |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/domain/ScanRecord.kt` | Modèle métier immuable (`@Immutable`) d'un scan Aurebesh | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/domain/OcrResult.kt` | Interface scellée (`Success`, `Empty`, `Error`) résultat d'une analyse OCR | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/TessDataManager.kt` | Extraction atomique de `aurebesh.traineddata` vers `filesDir/tesseract/tessdata/` | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/AutoImagePreprocessor.kt` | Découpage ROI, étirement d'histogramme 2%-98%, binarisation d'Otsu et détection auto de polarité | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/AurebeshOcrEngine.kt` | Wrapper thread-safe (`Mutex`) de `TessBaseAPI` avec double-passe transparente sur la confiance | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/data/local/entity/ScanHistoryEntity.kt` | Entité Room `scan_history` et fonctions de mapping `toDomain()` / `toEntity()` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/data/local/dao/ScanHistoryDao.kt` | Interface `@Dao` réactive (`Flow` + `suspend`) pour l'historique et les favoris | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/data/local/AppDatabase.kt` | Singleton `RoomDatabase` (`ocr_aurebesh.db`) | Actif |

@@ -29,13 +29,13 @@ Légende : `[x]` Terminé | `[/]` En cours | `[ ]` À faire
 - [x] Création de `AppDatabase` (`RoomDatabase`) et du `ScanHistoryRepository`
 
 ## Phase 4 : Couche OCR & Prétraitement Automatique (`ocr/`)
-- [ ] Création du gestionnaire d'assets (`TessDataManager`) pour copier `aurebesh.traineddata` vers `filesDir/tesseract/tessdata/`
-- [ ] Création de `AutoImagePreprocessor` :
+- [x] Création du gestionnaire d'assets (`TessDataManager`) pour copier `aurebesh.traineddata` vers `filesDir/tesseract/tessdata/`
+- [x] Création de `AutoImagePreprocessor` :
   - Découpage de la région d'intérêt (ROI) et rotation
   - Normalisation de contraste (étirement d'histogramme Min-Max en niveaux de gris)
   - Binarisation automatique (algorithme d'Otsu)
   - Détection automatique de polarité (analyse des bordures du ROI pour inverser automatiquement le texte clair sur fond sombre)
-- [ ] Création du moteur OCR (`AurebeshOcrEngine`) :
+- [x] Création du moteur OCR (`AurebeshOcrEngine`) :
   - Encapsulation thread-safe de `TessBaseAPI` (`Mutex` / dispatcher dédié) et cycle de vie (`recycle()`)
   - Logique de double-passe transparente (fallback sur l'image inversée si `meanConfidence` est faible, en retenant le meilleur score)
 
