@@ -40,9 +40,9 @@ Légende : `[x]` Terminé | `[/]` En cours | `[ ]` À faire
   - Logique de double-passe transparente (fallback sur l'image inversée si `meanConfidence` est faible, en retenant le meilleur score)
 
 ## Phase 5 : Caméra & Permissions (`camera/` & `ui/`)
-- [ ] Écran/composant de demande de permission caméra avec Accompanist (`rememberPermissionState`) et gestion des cas de refus (rationale / redirection vers les paramètres)
-- [ ] Composant `CameraPreview` intégrant `PreviewView` et liant `Preview` + `ImageAnalysis` au `LifecycleOwner`
-- [ ] Implémentation de `AurebeshImageAnalyzer` (`ImageAnalysis.Analyzer`) avec `STRATEGY_KEEP_ONLY_LATEST`
+- [x] Écran/composant de demande de permission caméra avec Accompanist (`rememberPermissionState`) et gestion des cas de refus (rationale / redirection vers les paramètres)
+- [x] Composant `CameraPreview` intégrant `PreviewView` et liant `Preview` + `ImageAnalysis` au `LifecycleOwner`
+- [x] Implémentation de `AurebeshImageAnalyzer` (`ImageAnalysis.Analyzer`) avec `STRATEGY_KEEP_ONLY_LATEST`
 
 ## Phase 6 : Interface Utilisateur & Expérience de Scan (`ui/scanner/` & `ui/history/`)
 - [ ] Définition de `ScannerUiState`, `ScannerUiEvent` et `ScannerViewModel`

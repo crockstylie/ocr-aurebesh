@@ -78,6 +78,9 @@ fr.antoinehory.ocraurebesh/
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/TessDataManager.kt` | Extraction atomique de `aurebesh.traineddata` vers `filesDir/tesseract/tessdata/` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/AutoImagePreprocessor.kt` | Découpage ROI, étirement d'histogramme 2%-98%, binarisation d'Otsu et détection auto de polarité | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/AurebeshOcrEngine.kt` | Wrapper thread-safe (`Mutex`) de `TessBaseAPI` avec double-passe transparente sur la confiance | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/camera/AurebeshImageAnalyzer.kt` | `ImageAnalysis.Analyzer` extrayant le ROI avec fermeture garantie de l'`ImageProxy` (`use {}`) | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/camera/CameraPreview.kt` | Composable CameraX (`PreviewView` + `ImageAnalysis` `STRATEGY_KEEP_ONLY_LATEST` + Torche) | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/CameraPermissionGate.kt` | Garde-barrière Accompanist Permissions (`CAMERA`) avec gestion rationale et refus permanent | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/data/local/entity/ScanHistoryEntity.kt` | Entité Room `scan_history` et fonctions de mapping `toDomain()` / `toEntity()` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/data/local/dao/ScanHistoryDao.kt` | Interface `@Dao` réactive (`Flow` + `suspend`) pour l'historique et les favoris | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/data/local/AppDatabase.kt` | Singleton `RoomDatabase` (`ocr_aurebesh.db`) | Actif |
