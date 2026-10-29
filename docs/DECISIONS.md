@@ -59,3 +59,12 @@
 - **Conséquences** :
   - Expérience utilisateur 100 % transparente ("Point & Scan").
   - Très faible surcoût CPU : la seconde passe n'est déclenchée qu'en cas d'incertitude sur une petite image déjà découpée au ROI.
+
+## ADR-007 : Optimisation du Pipeline Temps Réel (Seuillage Adaptatif Local, Cadrage FILL_CENTER HD & Modèle Augmenté Caméra)
+- **Date** : 2026-10-29
+- **Contexte** : Lors des premiers tests sur appareil physique, la reconnaissance temps réel fonctionnait bien sur une image propre en noir sur blanc mais peinait sur des scènes réelles (écrans lumineux, éclairage non uniforme, cadrage).
+- **Décision** :
+  1. **Alignement Cadrage & Résolution HD (`CameraPreview` + `AutoImagePreprocessor`)** : Configuration d'un `ResolutionSelector` `1280x720` (`RATIO_16_9`) et prise en compte du ratio `viewportAspectRatio` (`FILL_CENTER`) lors de la découpe de la ROI pour que l'image envoyée à Tesseract corresponde au pixel près au viseur HUD affiché à l'écran, avec normalisation de la hauteur à `112px` et ajout d'une marge blanche de `16px`.
+  2. **Binarisation Hybride Locale par Image Intégrale (`AutoImagePreprocessor`)** : Combinaison d'un filtre anti-Moiré $3 \times 3$, du seuil d'Otsu global et du seuillage adaptatif local de Bradley-Roth (via Image Intégrale en $O(1)$ par pixel) pour éliminer les ombres, reflets d'écran et vignettage.
+  3. **Score de Qualité Composite & `PSM_SINGLE_BLOCK` (`AurebeshOcrEngine`)** : Pondération de la confiance par la longueur utile du texte reconnu (`qualityScore`) pour empêcher les hallucinations d'un seul caractère de court-circuiter la seconde passe sur l'image inversée.
+  4. **Invalidation Automatique du Cache Modèle (`TessDataManager`) & Entraînement Augmenté (`train_aurebesh.py`)** : Vérification de l'empreinte SHA-256 de `aurebesh.traineddata` au démarrage et enrichissement du dataset synthétique (900 lignes avec inclinaisons $\pm 2.5^\circ$, variations d'épaisseur de trait liées au halo d'écran, espacement inter-lettres variable et mots isolés).

@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
 Script d'entraînement sur mesure du modèle Tesseract `aurebesh.traineddata`
-pour l'application Android OCRAurebesh.
+pour l'application Android OCRAurebesh, avec augmentations réalistes pour caméra mobile
+(inclinaison, halo d'écran / érosion-dilatation des traits, flou optique, espacement variable).
 """
-import os
 import random
 import shutil
 import subprocess
 import urllib.request
-import urllib.parse
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
@@ -45,6 +44,8 @@ CORPUS_WORDS = [
     "PACK", "MY", "BOX", "WITH", "FIVE", "DOZEN", "LIQUOR", "JUGS",
     "THE", "QUICK", "BROWN", "FOX", "JUMPS", "OVER", "LAZY", "DOG",
     "SPHINX", "OF", "BLACK", "QUARTZ", "JUDGE", "MY", "VOW",
+    "HELLO", "WORLD", "WELCOME", "SYSTEM", "ONLINE", "OFFLINE", "LOCKED",
+    "OPEN", "CLOSED", "WARNING", "ACCESS", "DENIED", "GRANTED", "TERMINAL",
     "0123456789", "100", "250", "500", "999", "2026", "37", "88", "66",
 ]
 
@@ -74,18 +75,30 @@ def prepare_directories():
         d.mkdir(parents=True, exist_ok=True)
 
 
-def generate_training_lines(num_lines: int = 320) -> list[str]:
+def generate_training_lines(num_lines: int = 900) -> list[str]:
     random.seed(42)
     lines = []
-    # 1. Explicit alphabet & digits coverage lines
     alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     digits = "0123456789"
-    for _ in range(15):
+
+    # 1. Couverture explicite de l'alphabet (séquentiel, par blocs et mélangé)
+    lines.extend([
+        "ABCDEFG HIJKLMN OPQRST UVWXYZ",
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        "ABCDEFGHIJKLM NOPQRSTUVWXYZ",
+        "0123456789 9876543210",
+    ] * 8)
+
+    for _ in range(30):
         shuffled_alpha = "".join(random.sample(alphabet, len(alphabet)))
-        lines.append(f"{shuffled_alpha[:13]} {shuffled_alpha[13:]}")
+        lines.append(f"{shuffled_alpha[:9]} {shuffled_alpha[9:18]} {shuffled_alpha[18:]}")
         lines.append(f"{digits} {''.join(random.sample(digits, len(digits)))}")
 
-    # 2. Iconic phrases & random 2-to-5 word combinations
+    # 2. Mots uniques (panneaux, portes, boutons d'interface Star Wars)
+    for word in CORPUS_WORDS:
+        lines.append(word)
+
+    # 3. Phrases iconiques & combinaisons de 1 à 4 mots
     fixed_phrases = [
         "MAY THE FORCE BE WITH YOU",
         "WELCOME TO GALAXYS EDGE",
@@ -98,60 +111,116 @@ def generate_training_lines(num_lines: int = 320) -> list[str]:
         "STAR WARS AUREBESH OCR",
         "IMPERIAL CARGO HOLD 42",
         "CANTINA CREDITS ONLY",
+        "ACCESS GRANTED",
+        "ACCESS DENIED",
+        "SYSTEM ONLINE",
     ]
-    for phrase in fixed_phrases * 4:
+    for phrase in fixed_phrases * 5:
         lines.append(phrase)
 
     while len(lines) < num_lines:
-        word_count = random.randint(2, 4)
+        word_count = random.choices([1, 2, 3, 4], weights=[20, 35, 30, 15])[0]
         chosen = [random.choice(CORPUS_WORDS) for _ in range(word_count)]
         lines.append(" ".join(chosen))
 
+    random.shuffle(lines)
     return lines[:num_lines]
 
 
-def render_line_image(text: str, font_path: Path, font_size: int) -> Image.Image:
+def draw_text_with_tracking(draw: ImageDraw.ImageDraw, xy: tuple[int, int], text: str, font: ImageFont.FreeTypeFont, tracking: int):
+    x, y = xy
+    for ch in text:
+        draw.text((x, y), ch, fill=0, font=font)
+        bbox = draw.textbbox((0, 0), ch, font=font)
+        adv = max(font.size // 3, bbox[2] - bbox[0]) if ch == " " else (bbox[2] - bbox[0])
+        x += adv + tracking
+
+
+def measure_text_with_tracking(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, tracking: int) -> tuple[int, int]:
+    total_w = 0
+    max_h = font.size
+    for idx, ch in enumerate(text):
+        bbox = draw.textbbox((0, 0), ch, font=font)
+        adv = max(font.size // 3, bbox[2] - bbox[0]) if ch == " " else (bbox[2] - bbox[0])
+        total_w += adv + (tracking if idx < len(text) - 1 else 0)
+        max_h = max(max_h, bbox[3] - bbox[1] + 8)
+    return max(1, total_w), max(1, max_h)
+
+
+def render_line_image(text: str, font_path: Path, font_size: int, augment: bool = True) -> Image.Image:
     font = ImageFont.truetype(str(font_path), font_size)
     dummy = Image.new("L", (10, 10), 255)
     draw = ImageDraw.Draw(dummy)
-    bbox = draw.textbbox((0, 0), text, font=font)
-    text_w = max(1, bbox[2] - bbox[0])
-    text_h = max(1, bbox[3] - bbox[1])
 
-    pad_x = random.randint(24, 40)
-    pad_y = random.randint(18, 28)
+    # Espacement inter-caractères variable (0 = normal, 1..4 = espacé type interface / affiche)
+    tracking = random.choice([0, 0, 0, 1, 2, 4]) if augment else 0
+
+    if tracking == 0:
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_w = max(1, bbox[2] - bbox[0])
+        text_h = max(1, bbox[3] - bbox[1])
+        offset_x = -bbox[0]
+        offset_y = -bbox[1]
+    else:
+        text_w, text_h = measure_text_with_tracking(draw, text, font, tracking)
+        offset_x = 0
+        offset_y = 0
+
+    pad_x = random.randint(20, 40) if augment else 28
+    pad_y = random.randint(14, 28) if augment else 20
     img_w = text_w + pad_x * 2
     img_h = text_h + pad_y * 2
 
     img = Image.new("L", (img_w, img_h), 255)
     draw = ImageDraw.Draw(img)
-    draw.text((pad_x - bbox[0], pad_y - bbox[1]), text, fill=0, font=font)
 
-    # Légères augmentations réalistes (flou très léger + seuillage type Otsu)
-    if random.random() < 0.35:
-        img = img.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.3, 0.7)))
-        threshold = random.randint(110, 160)
+    if tracking == 0:
+        draw.text((pad_x + offset_x, pad_y + offset_y), text, fill=0, font=font)
+    else:
+        draw_text_with_tracking(draw, (pad_x, pad_y), text, font, tracking)
+
+    if not augment:
+        return img
+
+    # 1. Légère inclinaison aléatoire compatible avec une boîte WordStr 1D (-0.8° à +0.8°)
+    if random.random() < 0.45:
+        angle = random.uniform(-0.8, 0.8)
+        img = img.rotate(angle, resample=Image.BICUBIC, expand=False, fillcolor=255)
+
+    # 2. Simulation de la mise au point caméra + variation d'épaisseur des traits
+    #    (halo lumineux sur écran sombre qui affine ou épaissit les traits après binarisation)
+    aug_mode = random.random()
+    if aug_mode < 0.30:
+        # Flou léger + seuillage bas -> traits plus fins (halo lumineux fort)
+        img = img.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.4, 1.0)))
+        threshold = random.randint(75, 115)
+        img = img.point(lambda p: 255 if p > threshold else 0)
+    elif aug_mode < 0.65:
+        # Flou léger + seuillage haut -> traits plus gras (sous-exposition ou encre épaisse)
+        img = img.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.4, 1.1)))
+        threshold = random.randint(145, 190)
+        img = img.point(lambda p: 255 if p > threshold else 0)
+    elif aug_mode < 0.85:
+        # Binarisation standard avec flou optique modéré
+        img = img.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.3, 0.8)))
+        threshold = random.randint(115, 145)
         img = img.point(lambda p: 255 if p > threshold else 0)
 
     return img
 
 
 def generate_dataset(fonts: list[Path]):
-    lines = generate_training_lines(500)
+    lines = generate_training_lines(900)
     lstmf_paths = []
-    print(f"Generating {len(lines)} synthetic Aurebesh training samples across {len(fonts)} fonts...")
+    print(f"Generating {len(lines)} camera-augmented Aurebesh training samples across {len(fonts)} fonts...")
 
     for idx, text in enumerate(lines):
         font_path = fonts[idx % len(fonts)]
-        font_size = random.choice([36, 42, 48, 54])
-        # AurebeshAF-Canon utilise les glyphes canoniques en MAJUSCULES (sans ligatures),
-        # tandis que les polices PixelSagas (Aurebesh.ttf, Bold, Condensed) ont les glyphes
-        # canoniques non-inversés en minuscules.
-        if "Canon" in font_path.name:
-            render_text = text.upper()
-        else:
-            render_text = text.lower()
-        img = render_line_image(render_text, font_path, font_size)
+        font_size = random.choice([32, 38, 44, 50, 58])
+        render_text = text.upper() if "Canon" in font_path.name else text.lower()
+        # Garder 20% d'échantillons propres et 80% d'échantillons augmentés caméra
+        augment = (idx % 5 != 0)
+        img = render_line_image(render_text, font_path, font_size, augment=augment)
         base_name = f"aur_{idx:04d}"
         tif_path = GT_DIR / f"{base_name}.tif"
         box_path = GT_DIR / f"{base_name}.box"
@@ -164,7 +233,7 @@ def generate_dataset(fonts: list[Path]):
         box_content = f"WordStr 0 0 {w} {h} 0 #{text}\n\t 0 0 {w} {h} 0\n"
         box_path.write_text(box_content, encoding="utf-8")
 
-        run_cmd(["tesseract", str(tif_path), str(GT_DIR / base_name), "--psm", "7", "lstm.train"])
+        run_cmd(["tesseract", str(tif_path), str(GT_DIR / base_name), "--psm", "6", "lstm.train"])
         lstmf_file = GT_DIR / f"{base_name}.lstmf"
         if lstmf_file.exists():
             lstmf_paths.append(str(lstmf_file))
@@ -176,14 +245,13 @@ def generate_dataset(fonts: list[Path]):
 
 
 def filter_compatible_fonts(downloaded_fonts: list[Path]) -> list[Path]:
-    """Vérifie que chaque police rend bien des glyphes non vides pour A-Z et 0-9."""
     valid_fonts = []
     for fp in downloaded_fonts:
         try:
             font = ImageFont.truetype(str(fp), 48)
             img = Image.new("L", (400, 100), 255)
             draw = ImageDraw.Draw(img)
-            draw.text((10, 10), "ABC123", fill=0, font=font)
+            draw.text((10, 10), "abc123", fill=0, font=font)
             extrema = img.getextrema()
             if extrema[0] < 128:
                 valid_fonts.append(fp)
@@ -217,12 +285,10 @@ def build_and_train():
 
     train_list_path, lines = generate_dataset(valid_fonts)
 
-    # Extraction de l'unicharset à partir des fichiers .box
     box_files = [str(p) for p in sorted(GT_DIR.glob("*.box"))]
     unicharset_path = WORK_DIR / "unicharset"
     run_cmd(["unicharset_extractor", "--output_unicharset", str(unicharset_path), "--norm_mode", "1"] + box_files)
 
-    # Création du starter traineddata pour "aurebesh"
     aur_lang_dir = LANGDATA_DIR / "aurebesh"
     aur_lang_dir.mkdir(parents=True, exist_ok=True)
     (aur_lang_dir / "aurebesh.training_text").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -238,12 +304,11 @@ def build_and_train():
     ])
     starter_traineddata = starter_dir / "aurebesh" / "aurebesh.traineddata"
 
-    # Extraction du modèle LSTM de base (eng) pour transfert des couches basses et remplacement de la couche finale
     eng_lstm = WORK_DIR / "eng.lstm"
     run_cmd(["combine_tessdata", "-e", str(eng_traineddata), str(eng_lstm)])
 
     checkpoint_prefix = OUTPUT_DIR / "aurebesh"
-    print("Starting LSTM training (transfer learning from eng with replaced top layer)...")
+    print("Starting LSTM training (transfer learning from eng with camera augmentations)...")
     run_cmd([
         "lstmtraining",
         "--continue_from", str(eng_lstm),
@@ -253,15 +318,14 @@ def build_and_train():
         "--net_spec", "[Lfx192 O1c1]",
         "--model_output", str(checkpoint_prefix),
         "--train_listfile", str(train_list_path),
-        "--max_iterations", "5000",
-        "--target_error_rate", "0.0001",
+        "--max_iterations", "8000",
+        "--target_error_rate", "0.0002",
     ])
 
     checkpoint_file = Path(f"{checkpoint_prefix}_checkpoint")
     if not checkpoint_file.exists():
         raise RuntimeError("Training did not produce a checkpoint!")
 
-    # Export du modèle final quantifié (int) optimisé pour mobile Android
     run_cmd([
         "lstmtraining",
         "--stop_training",
@@ -273,7 +337,6 @@ def build_and_train():
 
     print(f"\nModel successfully generated: {FINAL_MODEL_PATH} ({FINAL_MODEL_PATH.stat().st_size / 1024:.1f} KB)")
 
-    # Test de validation sur des phrases Aurebesh inédites sur toutes les polices
     for vf in valid_fonts:
         print(f"\n=== Test avec la police : {vf.name} ===")
         verify_model(vf)
@@ -290,10 +353,11 @@ def verify_model(test_font: Path):
         "WELCOME TO GALAXYS EDGE",
         "DOCKING BAY 94",
         "SECTOR 7G",
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
     ]
     for phrase in test_phrases:
         render_phrase = phrase.upper() if "Canon" in test_font.name else phrase.lower()
-        img = render_line_image(render_phrase, test_font, 48)
+        img = render_line_image(render_phrase, test_font, 48, augment=True)
         test_img_path = WORK_DIR / "test_sample.png"
         img.save(test_img_path)
         out = run_cmd([
@@ -302,7 +366,7 @@ def verify_model(test_font: Path):
             "stdout",
             "--tessdata-dir", str(tessdata_test_dir),
             "-l", "aurebesh",
-            "--psm", "7",
+            "--psm", "6",
         ])
         recognized = out.strip()
         print(f"Expected : '{phrase}' | Recognized : '{recognized}'")

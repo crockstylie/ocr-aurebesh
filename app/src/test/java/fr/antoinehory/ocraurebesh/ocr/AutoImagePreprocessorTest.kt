@@ -10,6 +10,7 @@ import org.junit.Test
  * - Le calcul du seuil optimal de binarisation d'Otsu.
  * - La détection automatique de polarité (texte sombre sur fond clair vs texte clair/néon sur fond sombre).
  * - L'étirement d'histogramme 2%-98% sur des textes à faible contraste ou colorés (hologrammes).
+ * - Le seuillage adaptatif local par Image Intégrale sous éclairage non uniforme (ombres / vignettage).
  */
 class AutoImagePreprocessorTest {
 
@@ -32,8 +33,8 @@ class AutoImagePreprocessorTest {
 
     @Test
     fun `preprocessPixels keeps dark text on light background without inversion`() {
-        val width = 20
-        val height = 20
+        val width = 24
+        val height = 24
         val pixels = buildSyntheticRoi(
             width = width,
             height = height,
@@ -47,19 +48,16 @@ class AutoImagePreprocessorTest {
             "Un texte sombre sur fond clair ne doit pas être auto-inversé",
             result.wasAutoInverted,
         )
-        // Le centre (glyphe) doit être noir dans primaryPixels et blanc dans invertedPixels
         val centerIndex = (height / 2) * width + (width / 2)
         assertEquals(AutoImagePreprocessor.COLOR_BLACK, result.primaryPixels[centerIndex])
         assertEquals(AutoImagePreprocessor.COLOR_WHITE, result.invertedPixels[centerIndex])
-
-        // Le coin (fond) doit être blanc dans primaryPixels
         assertEquals(AutoImagePreprocessor.COLOR_WHITE, result.primaryPixels[0])
     }
 
     @Test
     fun `preprocessPixels automatically detects and inverts light text on dark background`() {
-        val width = 20
-        val height = 20
+        val width = 24
+        val height = 24
         val pixels = buildSyntheticRoi(
             width = width,
             height = height,
@@ -73,10 +71,8 @@ class AutoImagePreprocessorTest {
             "Un texte clair sur fond sombre doit déclencher l'inversion automatique",
             result.wasAutoInverted,
         )
-        // Après inversion automatique, le glyphe au centre doit être NOIR pour Tesseract
         val centerIndex = (height / 2) * width + (width / 2)
         assertEquals(AutoImagePreprocessor.COLOR_BLACK, result.primaryPixels[centerIndex])
-        // Et la bordure (arrière-plan) doit être BLANCHE pour Tesseract
         assertEquals(AutoImagePreprocessor.COLOR_WHITE, result.primaryPixels[0])
     }
 
@@ -106,10 +102,31 @@ class AutoImagePreprocessorTest {
         assertEquals(AutoImagePreprocessor.COLOR_WHITE, result.primaryPixels[0])
     }
 
-    /**
-     * Génère une image synthétique avec un fond uniforme sur tout le cadre
-     * et un bloc central représentant un glyphe Aurebesh.
-     */
+    @Test
+    fun `preprocessPixels preserves glyph strokes under uneven horizontal lighting gradient`() {
+        val width = 40
+        val height = 20
+        val pixels = IntArray(width * height)
+
+        // Fond avec fort gradient d'éclairage de gauche (sombre: 130) à droite (clair: 245)
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val bgLuma = 130 + (x * 115) / width
+                val isGlyphStroke = (y in 7..12) && (x in 8..11 || x in 28..31)
+                val luma = if (isGlyphStroke) bgLuma - 65 else bgLuma
+                val clamped = luma.coerceIn(0, 255)
+                pixels[y * width + x] = (0xFF shl 24) or (clamped shl 16) or (clamped shl 8) or clamped
+            }
+        }
+
+        val result = AutoImagePreprocessor.preprocessPixels(pixels, width, height)
+
+        // Le glyphe dans la zone ombragée (x=9, y=9) ET le glyphe dans la zone éclairée (x=29, y=9)
+        // doivent tous deux être détectés en noir grâce au seuillage adaptatif local
+        assertEquals(AutoImagePreprocessor.COLOR_BLACK, result.primaryPixels[9 * width + 9])
+        assertEquals(AutoImagePreprocessor.COLOR_BLACK, result.primaryPixels[9 * width + 29])
+    }
+
     private fun buildSyntheticRoi(
         width: Int,
         height: Int,

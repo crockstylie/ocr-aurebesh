@@ -1,10 +1,15 @@
 package fr.antoinehory.ocraurebesh.camera
 
+import android.util.Size
+import android.view.View
 import android.view.ViewGroup
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.runtime.Composable
@@ -24,9 +29,9 @@ import java.util.concurrent.Executors
 
 /**
  * Composable affichant le flux caméra via [PreviewView] et attachant les cas d'utilisation
- * [Preview] et [ImageAnalysis] au [LocalLifecycleOwner].
+ * [Preview] et [ImageAnalysis] (en haute définition `1280x720`+) au [LocalLifecycleOwner].
  *
- * @param analyzer Instance de [ImageAnalysis.Analyzer] recevant les frames en mode `STRATEGY_KEEP_ONLY_LATEST`.
+ * @param analyzer Instance de [AurebeshImageAnalyzer] recevant les frames en mode `STRATEGY_KEEP_ONLY_LATEST`.
  * @param isTorchEnabled État souhaité de la lampe torche.
  * @param onFlashAvailabilityChanged Callback indiquant si l'appareil dispose d'un flash matériel.
  * @param onCameraError Callback invoqué si l'initialisation CameraX échoue.
@@ -34,7 +39,7 @@ import java.util.concurrent.Executors
  */
 @Composable
 fun CameraPreview(
-    analyzer: ImageAnalysis.Analyzer,
+    analyzer: AurebeshImageAnalyzer,
     isTorchEnabled: Boolean,
     onFlashAvailabilityChanged: (Boolean) -> Unit,
     onCameraError: (String) -> Unit,
@@ -57,6 +62,21 @@ fun CameraPreview(
         }
     }
 
+    DisposableEffect(previewView, analyzer) {
+        val layoutListener = View.OnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+            if (v.width > 0 && v.height > 0) {
+                analyzer.viewportAspectRatio = v.width.toFloat() / v.height.toFloat()
+            }
+        }
+        previewView.addOnLayoutChangeListener(layoutListener)
+        if (previewView.width > 0 && previewView.height > 0) {
+            analyzer.viewportAspectRatio = previewView.width.toFloat() / previewView.height.toFloat()
+        }
+        onDispose {
+            previewView.removeOnLayoutChangeListener(layoutListener)
+        }
+    }
+
     val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
     var boundCamera by remember { mutableStateOf<Camera?>(null) }
 
@@ -68,11 +88,23 @@ fun CameraPreview(
         val listener = Runnable {
             try {
                 val cameraProvider = cameraProviderFuture.get()
+                val resolutionSelector = ResolutionSelector.Builder()
+                    .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
+                    .setResolutionStrategy(
+                        ResolutionStrategy(
+                            Size(1280, 720),
+                            ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+                        )
+                    )
+                    .build()
+
                 val previewUseCase = Preview.Builder()
+                    .setResolutionSelector(resolutionSelector)
                     .build()
                     .also { it.surfaceProvider = previewView.surfaceProvider }
 
                 val imageAnalysisUseCase = ImageAnalysis.Builder()
+                    .setResolutionSelector(resolutionSelector)
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
                     .build()

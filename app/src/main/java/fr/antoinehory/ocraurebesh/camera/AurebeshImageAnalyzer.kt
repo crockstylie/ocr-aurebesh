@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * - Ferme systématiquement chaque [ImageProxy] via `use {}` pour ne jamais bloquer le pipeline CameraX.
  * - Ignore immédiatement les frames lorsque le scan est en pause, qu'une analyse OCR est déjà en cours,
  *   ou que le délai minimal ([minIntervalMs]) entre deux analyses n'est pas écoulé.
- * - Découpe uniquement la région d'intérêt ([roiFraction]) avant d'invoquer [OcrRecognizer].
+ * - Découpe exactement la région d'intérêt ([roiFraction]) alignée sur le ratio d'écran ([viewportAspectRatio]).
  * - Garantit le recyclage du [Bitmap] ROI même en cas d'annulation du [CoroutineScope] parent.
  */
 class AurebeshImageAnalyzer(
@@ -34,8 +34,16 @@ class AurebeshImageAnalyzer(
 ) : ImageAnalysis.Analyzer {
 
     private val isProcessing = AtomicBoolean(false)
+
     @Volatile
     private var lastAnalysisTimestampMs: Long = 0L
+
+    /**
+     * Ratio `largeur / hauteur` du composant `PreviewView` à l'écran,
+     * permettant d'aligner le découpage ROI sur le recadrage `FILL_CENTER`.
+     */
+    @Volatile
+    var viewportAspectRatio: Float = 0f
 
     override fun analyze(imageProxy: ImageProxy) {
         val now = SystemClock.elapsedRealtime()
@@ -59,6 +67,7 @@ class AurebeshImageAnalyzer(
                     source = fullFrameBitmap,
                     rotationDegrees = rotationDegrees,
                     roiFraction = roiFraction,
+                    viewportAspectRatio = viewportAspectRatio,
                 )
                 if (cropped !== fullFrameBitmap) {
                     fullFrameBitmap.recycle()
@@ -107,6 +116,6 @@ class AurebeshImageAnalyzer(
     }
 
     companion object {
-        private const val DEFAULT_MIN_INTERVAL_MS = 300L
+        private const val DEFAULT_MIN_INTERVAL_MS = 180L
     }
 }

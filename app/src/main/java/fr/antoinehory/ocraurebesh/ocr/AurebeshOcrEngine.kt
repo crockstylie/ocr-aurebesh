@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.math.min
 
 /**
  * Contrat d'abstraction du moteur de reconnaissance OCR Aurebesh,
@@ -25,13 +26,14 @@ interface OcrRecognizer {
  *
  * Caractéristiques clés :
  * - Toutes les opérations natives sont sérialisées via un [Mutex] sur un [CoroutineDispatcher] dédié.
- * - Intègre le prétraitement automatique [AutoImagePreprocessor] et une **double-passe transparente** :
- *   si la confiance sur la polarité estimée est inférieure à [FALLBACK_CONFIDENCE_THRESHOLD],
- *   l'image inversée est automatiquement testée et le meilleur résultat est retenu.
+ * - Utilise `PSM_SINGLE_BLOCK` pour reconnaître aussi bien un mot court, une ligne complète ou deux lignes.
+ * - Intègre le prétraitement automatique [AutoImagePreprocessor] et une **double-passe intelligente** :
+ *   compare la polarité principale et la polarité inversée via un score de qualité composite
+ *   (confiance pondérée par la longueur utile) afin d'éliminer les hallucinations d'un seul caractère.
  */
 class AurebeshOcrEngine(
     private val tessDataManager: TessDataManager,
-    private val ocrDispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1)
+    private val ocrDispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
 ) : OcrRecognizer {
 
     private val mutex = Mutex()
@@ -46,19 +48,7 @@ class AurebeshOcrEngine(
             if (isInitialized && tessBaseApi != null) {
                 return@withLock Result.success(Unit)
             }
-
-            tessDataManager.ensureTessDataReady().mapCatching { dataPath ->
-                val api = TessBaseAPI()
-                val success = api.init(dataPath, TessDataManager.LANGUAGE_CODE)
-                if (!success) {
-                    api.recycle()
-                    throw IllegalStateException("Échec de l'initialisation de TessBaseAPI avec le modèle ${TessDataManager.LANGUAGE_CODE}")
-                }
-                api.pageSegMode = TessBaseAPI.PageSegMode.PSM_SINGLE_LINE
-                api.setVariable(TessBaseAPI.VAR_CHAR_WHITELIST, ALLOWED_CHARS)
-                tessBaseApi = api
-                isInitialized = true
-            }
+            initializeInternalUnlocked()
         }
     }
 
@@ -75,7 +65,7 @@ class AurebeshOcrEngine(
                     val err = initResult.exceptionOrNull()
                     return@withLock OcrResult.Error(
                         message = err?.localizedMessage ?: "Moteur OCR non initialisé",
-                        cause = err
+                        cause = err,
                     )
                 }
             }
@@ -84,24 +74,28 @@ class AurebeshOcrEngine(
             val preprocessed = AutoImagePreprocessor.preprocessForOcr(roiBitmap)
 
             try {
-                // Passe 1 : sur la polarité détectée automatiquement par analyse des bordures
+                // Passe 1 : sur la polarité détectée automatiquement
                 val primaryPass = runSinglePass(api, preprocessed.primaryBitmap)
 
-                if (primaryPass.text.isNotEmpty() && primaryPass.confidence >= FALLBACK_CONFIDENCE_THRESHOLD) {
+                // On ne court-circuite la Passe 2 que si la Passe 1 est très fiable (>= 80% et >= 3 caractères)
+                if (
+                    primaryPass.nonSpaceLength >= 3 &&
+                    primaryPass.confidence >= HIGH_CONFIDENCE_SHORT_CIRCUIT
+                ) {
                     return@withLock OcrResult.Success(
                         text = primaryPass.text,
                         confidence = primaryPass.confidence,
-                        wasInverted = preprocessed.wasAutoInverted
+                        wasInverted = preprocessed.wasAutoInverted,
                     )
                 }
 
-                // Passe 2 (Fallback transparent) : test de la polarité opposée si confiance faible
+                // Passe 2 : test systématique de la polarité opposée (texte clair sur fond sombre vs sombre sur clair)
                 val invertedPass = runSinglePass(api, preprocessed.invertedBitmap)
 
                 val bestPass: PassResult
                 val wasInvertedUsed: Boolean
 
-                if (invertedPass.text.isNotEmpty() && invertedPass.confidence > primaryPass.confidence) {
+                if (invertedPass.qualityScore > primaryPass.qualityScore) {
                     bestPass = invertedPass
                     wasInvertedUsed = !preprocessed.wasAutoInverted
                 } else {
@@ -109,13 +103,19 @@ class AurebeshOcrEngine(
                     wasInvertedUsed = preprocessed.wasAutoInverted
                 }
 
-                if (bestPass.text.isEmpty() || bestPass.confidence < MIN_ACCEPTABLE_CONFIDENCE) {
+                val minRequiredConfidence = if (bestPass.nonSpaceLength == 1) {
+                    SINGLE_CHAR_MIN_CONFIDENCE
+                } else {
+                    MIN_ACCEPTABLE_CONFIDENCE
+                }
+
+                if (bestPass.text.isEmpty() || bestPass.confidence < minRequiredConfidence) {
                     OcrResult.Empty
                 } else {
                     OcrResult.Success(
                         text = bestPass.text,
                         confidence = bestPass.confidence,
-                        wasInverted = wasInvertedUsed
+                        wasInverted = wasInvertedUsed,
                     )
                 }
             } catch (e: CancellationException) {
@@ -123,7 +123,7 @@ class AurebeshOcrEngine(
             } catch (e: Exception) {
                 OcrResult.Error(
                     message = e.localizedMessage ?: "Erreur lors de l'analyse OCR",
-                    cause = e
+                    cause = e,
                 )
             } finally {
                 preprocessed.primaryBitmap.recycle()
@@ -150,9 +150,11 @@ class AurebeshOcrEngine(
             val success = api.init(dataPath, TessDataManager.LANGUAGE_CODE)
             if (!success) {
                 api.recycle()
-                throw IllegalStateException("Échec de l'initialisation de TessBaseAPI")
+                throw IllegalStateException(
+                    "Échec de l'initialisation de TessBaseAPI avec le modèle ${TessDataManager.LANGUAGE_CODE}"
+                )
             }
-            api.pageSegMode = TessBaseAPI.PageSegMode.PSM_SINGLE_LINE
+            api.pageSegMode = TessBaseAPI.PageSegMode.PSM_SINGLE_BLOCK
             api.setVariable(TessBaseAPI.VAR_CHAR_WHITELIST, ALLOWED_CHARS)
             tessBaseApi = api
             isInitialized = true
@@ -167,22 +169,39 @@ class AurebeshOcrEngine(
 
         val cleanedText = rawText
             .uppercase()
-            .replace( DISALLOWED_CHARS_REGEX, " ")
+            .replace(DISALLOWED_CHARS_REGEX, " ")
             .replace(MULTIPLE_SPACES_REGEX, " ")
             .trim()
 
-        return PassResult(text = cleanedText, confidence = confidence)
+        val nonSpaceLength = cleanedText.count { it != ' ' }
+        // Pondération favorisant les vraies séquences de lettres par rapport à un bruit d'un seul caractère
+        val lengthWeight = min(4, nonSpaceLength)
+        val qualityScore = if (nonSpaceLength == 0 || confidence < MIN_ACCEPTABLE_CONFIDENCE) {
+            0
+        } else {
+            confidence * (2 + lengthWeight)
+        }
+
+        return PassResult(
+            text = cleanedText,
+            confidence = confidence,
+            nonSpaceLength = nonSpaceLength,
+            qualityScore = qualityScore,
+        )
     }
 
     private data class PassResult(
         val text: String,
-        val confidence: Int
+        val confidence: Int,
+        val nonSpaceLength: Int,
+        val qualityScore: Int,
     )
 
     companion object {
         private const val ALLOWED_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 "
-        private const val FALLBACK_CONFIDENCE_THRESHOLD = 65
+        private const val HIGH_CONFIDENCE_SHORT_CIRCUIT = 80
         private const val MIN_ACCEPTABLE_CONFIDENCE = 45
+        private const val SINGLE_CHAR_MIN_CONFIDENCE = 72
         private val DISALLOWED_CHARS_REGEX = Regex("[^A-Z0-9 ]")
         private val MULTIPLE_SPACES_REGEX = Regex("\\s+")
     }

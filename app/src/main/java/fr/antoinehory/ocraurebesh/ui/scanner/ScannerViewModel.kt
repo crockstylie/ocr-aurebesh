@@ -166,6 +166,17 @@ class ScannerViewModel(
             is OcrResult.Success -> {
                 _uiState.update { state ->
                     if (state.isPaused) {
+                        return@update state
+                    }
+                    val currentLen = state.recognizedText.count { it != ' ' }
+                    val newLen = result.text.count { it != ' ' }
+                    // Anti-clignotement : évite qu'un caractère isolé de faible confiance n'écrase
+                    // une phrase complète récemment reconnue avec une meilleure confiance
+                    val isWeakSingleCharOverride =
+                        newLen == 1 &&
+                            currentLen >= 3 &&
+                            result.confidence < state.confidence
+                    if (isWeakSingleCharOverride) {
                         state
                     } else {
                         state.copy(
