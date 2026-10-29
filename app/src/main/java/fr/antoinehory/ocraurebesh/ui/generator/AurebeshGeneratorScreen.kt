@@ -80,6 +80,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -92,6 +93,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import fr.antoinehory.ocraurebesh.R
 import fr.antoinehory.ocraurebesh.data.local.AppDatabase
 import fr.antoinehory.ocraurebesh.data.repository.ScanHistoryRepository
 import fr.antoinehory.ocraurebesh.ui.components.HudIcons
@@ -125,7 +127,7 @@ private enum class ColorPickerTarget {
  * Écran épuré du Studio / Générateur Aurebesh :
  * - Barre supérieure minimaliste sans titre : Retour à gauche, boutons Style/Couleurs, Sauvegarder, Télécharger (SVG/PNG/JPG) et Historique à droite.
  * - Espace maximal dédié à l'aperçu Aurebesh en direct et au champ de texte multi-lignes (sans label).
- * - Menu de style et couleurs activable/rétractable à la demande avec 8 polices Aurebesh, damier DAO pour la transparence et Color Picker complet.
+ * - Menu de style et couleurs activable/rétractable à la demande avec 9 polices Aurebesh, damier DAO pour la transparence et Color Picker complet.
  */
 @Composable
 fun AurebeshGeneratorScreen(
@@ -137,6 +139,14 @@ fun AurebeshGeneratorScreen(
     val isPreview = LocalInspectionMode.current
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val msgExportError = stringResource(R.string.studio_msg_export_error)
+    val msgWriteBeforeSave = stringResource(R.string.studio_msg_write_before_save)
+    val msgSavedToHistory = stringResource(R.string.studio_msg_saved_to_history)
+    val msgSaveError = stringResource(R.string.studio_msg_save_error)
+    val msgCopiedToClipboard = stringResource(R.string.copied_to_clipboard)
+    val msgHistoryCleared = stringResource(R.string.msg_history_cleared)
+    val clipboardLabel = stringResource(R.string.clipboard_label_translation)
 
     val historyRepository = remember(context, isPreview) {
         if (isPreview) {
@@ -207,9 +217,10 @@ fun AurebeshGeneratorScreen(
 
     if (lastExportedFile != null) {
         val exported = lastExportedFile!!
-        LaunchedEffect(exported) {
+        val downloadedText = stringResource(R.string.studio_msg_downloaded, exported.fileName)
+        LaunchedEffect(exported, downloadedText) {
             snackbarHostState.showSnackbar(
-                message = "Téléchargé : ${exported.fileName}",
+                message = downloadedText,
             )
             lastExportedFile = null
         }
@@ -243,7 +254,7 @@ fun AurebeshGeneratorScreen(
                         lastExportedFile = exportedFile
                     }
                     .onFailure { err ->
-                        errorMessage = err.localizedMessage ?: "Erreur lors de l'export"
+                        errorMessage = err.localizedMessage ?: msgExportError
                     }
             }
         }
@@ -276,7 +287,7 @@ fun AurebeshGeneratorScreen(
     val saveToHistory: () -> Unit = {
         val textToSave = inputText.trim()
         if (textToSave.isBlank()) {
-            errorMessage = "Écrivez un texte avant de sauvegarder"
+            errorMessage = msgWriteBeforeSave
         } else if (historyRepository != null) {
             coroutineScope.launch {
                 runCatching {
@@ -285,9 +296,9 @@ fun AurebeshGeneratorScreen(
                         confidence = 100,
                     )
                 }.onSuccess {
-                    snackbarHostState.showSnackbar("Texte enregistré dans l'historique")
+                    snackbarHostState.showSnackbar(msgSavedToHistory)
                 }.onFailure { err ->
-                    errorMessage = err.localizedMessage ?: "Erreur lors de la sauvegarde"
+                    errorMessage = err.localizedMessage ?: msgSaveError
                 }
             }
         }
@@ -322,19 +333,76 @@ fun AurebeshGeneratorScreen(
                 )
 
                 BoxWithConstraints(modifier = Modifier.weight(1f)) {
-                val isLandscape = maxWidth > maxHeight
+                    val isLandscape = maxWidth > maxHeight
 
-                if (isLandscape) {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    if (isLandscape) {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
+                            Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            ) {
+                                AurebeshLivePreviewCard(
+                                    text = inputText,
+                                    fontFamily = aurebeshFontFamily,
+                                    alignment = selectedAlignment,
+                                    fontSizeSp = fontSizeSp,
+                                    textColor = Color(textColorArgb),
+                                    backgroundColor = Color(backgroundColorArgb),
+                                    isBackgroundTransparent = isBackgroundTransparent,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight(),
+                                )
+
+                                LatinMultiLineEditor(
+                                    inputText = inputText,
+                                    onInputTextChange = { inputText = it },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight(),
+                                )
+                            }
+
+                            AnimatedVisibility(
+                                visible = isStyleMenuVisible,
+                                enter = expandVertically() + fadeIn(),
+                                exit = shrinkVertically() + fadeOut(),
+                            ) {
+                                StyleAndColorsMenuPanel(
+                                    selectedFont = selectedFont,
+                                    onSelectFont = { selectedFontName = it.name },
+                                    selectedAlignment = selectedAlignment,
+                                    onSelectAlignment = { selectedAlignmentName = it.name },
+                                    fontSizeSp = fontSizeSp,
+                                    onFontSizeChange = { fontSizeSp = it },
+                                    textColorArgb = textColorArgb,
+                                    onSelectTextColor = { textColorArgb = it },
+                                    onOpenTextColorPicker = {
+                                        activeColorPickerTarget = ColorPickerTarget.TEXT
+                                    },
+                                    backgroundColorArgb = backgroundColorArgb,
+                                    isBackgroundTransparent = isBackgroundTransparent,
+                                    onSelectBackground = { preset ->
+                                        backgroundColorArgb = preset.argb
+                                        isBackgroundTransparent = preset.isTransparent
+                                    },
+                                    onOpenBackgroundColorPicker = {
+                                        activeColorPickerTarget = ColorPickerTarget.BACKGROUND
+                                    },
+                                )
+                            }
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            // Aperçu Aurebesh grand format
                             AurebeshLivePreviewCard(
                                 text = inputText,
                                 fontFamily = aurebeshFontFamily,
@@ -344,108 +412,51 @@ fun AurebeshGeneratorScreen(
                                 backgroundColor = Color(backgroundColorArgb),
                                 isBackgroundTransparent = isBackgroundTransparent,
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight(),
+                                    .weight(if (isStyleMenuVisible) 0.95f else 1.15f)
+                                    .fillMaxWidth(),
                             )
 
+                            // Zone de saisie multi-lignes (sans label, occupe tout le reste quand le menu style est fermé)
                             LatinMultiLineEditor(
                                 inputText = inputText,
                                 onInputTextChange = { inputText = it },
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight(),
+                                    .weight(if (isStyleMenuVisible) 0.65f else 1f)
+                                    .fillMaxWidth(),
                             )
-                        }
 
-                        AnimatedVisibility(
-                            visible = isStyleMenuVisible,
-                            enter = expandVertically() + fadeIn(),
-                            exit = shrinkVertically() + fadeOut(),
-                        ) {
-                            StyleAndColorsMenuPanel(
-                                selectedFont = selectedFont,
-                                onSelectFont = { selectedFontName = it.name },
-                                selectedAlignment = selectedAlignment,
-                                onSelectAlignment = { selectedAlignmentName = it.name },
-                                fontSizeSp = fontSizeSp,
-                                onFontSizeChange = { fontSizeSp = it },
-                                textColorArgb = textColorArgb,
-                                onSelectTextColor = { textColorArgb = it },
-                                onOpenTextColorPicker = {
-                                    activeColorPickerTarget = ColorPickerTarget.TEXT
-                                },
-                                backgroundColorArgb = backgroundColorArgb,
-                                isBackgroundTransparent = isBackgroundTransparent,
-                                onSelectBackground = { preset ->
-                                    backgroundColorArgb = preset.argb
-                                    isBackgroundTransparent = preset.isTransparent
-                                },
-                                onOpenBackgroundColorPicker = {
-                                    activeColorPickerTarget = ColorPickerTarget.BACKGROUND
-                                },
-                            )
-                        }
-                    }
-                } else {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        // Aperçu Aurebesh grand format
-                        AurebeshLivePreviewCard(
-                            text = inputText,
-                            fontFamily = aurebeshFontFamily,
-                            alignment = selectedAlignment,
-                            fontSizeSp = fontSizeSp,
-                            textColor = Color(textColorArgb),
-                            backgroundColor = Color(backgroundColorArgb),
-                            isBackgroundTransparent = isBackgroundTransparent,
-                            modifier = Modifier
-                                .weight(if (isStyleMenuVisible) 0.95f else 1.15f)
-                                .fillMaxWidth(),
-                        )
-
-                        // Zone de saisie multi-lignes (sans label, occupe tout le reste quand le menu style est fermé)
-                        LatinMultiLineEditor(
-                            inputText = inputText,
-                            onInputTextChange = { inputText = it },
-                            modifier = Modifier
-                                .weight(if (isStyleMenuVisible) 0.65f else 1f)
-                                .fillMaxWidth(),
-                        )
-
-                        // Menu Style & Couleurs activable par le bouton de la barre du haut
-                        AnimatedVisibility(
-                            visible = isStyleMenuVisible,
-                            enter = expandVertically() + fadeIn(),
-                            exit = shrinkVertically() + fadeOut(),
-                        ) {
-                            StyleAndColorsMenuPanel(
-                                selectedFont = selectedFont,
-                                onSelectFont = { selectedFontName = it.name },
-                                selectedAlignment = selectedAlignment,
-                                onSelectAlignment = { selectedAlignmentName = it.name },
-                                fontSizeSp = fontSizeSp,
-                                onFontSizeChange = { fontSizeSp = it },
-                                textColorArgb = textColorArgb,
-                                onSelectTextColor = { textColorArgb = it },
-                                onOpenTextColorPicker = {
-                                    activeColorPickerTarget = ColorPickerTarget.TEXT
-                                },
-                                backgroundColorArgb = backgroundColorArgb,
-                                isBackgroundTransparent = isBackgroundTransparent,
-                                onSelectBackground = { preset ->
-                                    backgroundColorArgb = preset.argb
-                                    isBackgroundTransparent = preset.isTransparent
-                                },
-                                onOpenBackgroundColorPicker = {
-                                    activeColorPickerTarget = ColorPickerTarget.BACKGROUND
-                                },
-                            )
+                            // Menu Style & Couleurs activable par le bouton de la barre du haut
+                            AnimatedVisibility(
+                                visible = isStyleMenuVisible,
+                                enter = expandVertically() + fadeIn(),
+                                exit = shrinkVertically() + fadeOut(),
+                            ) {
+                                StyleAndColorsMenuPanel(
+                                    selectedFont = selectedFont,
+                                    onSelectFont = { selectedFontName = it.name },
+                                    selectedAlignment = selectedAlignment,
+                                    onSelectAlignment = { selectedAlignmentName = it.name },
+                                    fontSizeSp = fontSizeSp,
+                                    onFontSizeChange = { fontSizeSp = it },
+                                    textColorArgb = textColorArgb,
+                                    onSelectTextColor = { textColorArgb = it },
+                                    onOpenTextColorPicker = {
+                                        activeColorPickerTarget = ColorPickerTarget.TEXT
+                                    },
+                                    backgroundColorArgb = backgroundColorArgb,
+                                    isBackgroundTransparent = isBackgroundTransparent,
+                                    onSelectBackground = { preset ->
+                                        backgroundColorArgb = preset.argb
+                                        isBackgroundTransparent = preset.isTransparent
+                                    },
+                                    onOpenBackgroundColorPicker = {
+                                        activeColorPickerTarget = ColorPickerTarget.BACKGROUND
+                                    },
+                                )
+                            }
                         }
                     }
                 }
-            }
             }
 
             // Toast HUD sombre positionné en haut (sous la barre d'outils) pour ne jamais gêner le bas
@@ -472,9 +483,9 @@ fun AurebeshGeneratorScreen(
                 onCopyText = { text ->
                     val clipboard =
                         context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                    clipboard?.setPrimaryClip(ClipData.newPlainText("Traduction Aurebesh", text))
+                    clipboard?.setPrimaryClip(ClipData.newPlainText(clipboardLabel, text))
                     coroutineScope.launch {
-                        snackbarHostState.showSnackbar("Texte copié dans le presse-papiers")
+                        snackbarHostState.showSnackbar(msgCopiedToClipboard)
                     }
                 },
                 onEditInStudio = { text ->
@@ -490,7 +501,7 @@ fun AurebeshGeneratorScreen(
                     historyRepository?.let { repo ->
                         coroutineScope.launch {
                             repo.clearHistory()
-                            snackbarHostState.showSnackbar("Historique effacé")
+                            snackbarHostState.showSnackbar(msgHistoryCleared)
                         }
                     }
                 },
@@ -507,8 +518,8 @@ fun AurebeshGeneratorScreen(
             }
             HsvColorPickerDialog(
                 title = when (target) {
-                    ColorPickerTarget.TEXT -> "Couleur des lettres"
-                    ColorPickerTarget.BACKGROUND -> "Couleur du fond"
+                    ColorPickerTarget.TEXT -> stringResource(R.string.studio_picker_title_letters)
+                    ColorPickerTarget.BACKGROUND -> stringResource(R.string.studio_picker_title_background)
                 },
                 initialColorArgb = initialArgb,
                 onDismiss = { activeColorPickerTarget = null },
@@ -546,6 +557,10 @@ private fun GeneratorTopBar(
     modifier: Modifier = Modifier,
 ) {
     var isDownloadMenuExpanded by remember { mutableStateOf(false) }
+    val styleMenuDesc = stringResource(R.string.studio_style_menu)
+    val saveDesc = stringResource(R.string.studio_save_to_history)
+    val downloadDesc = stringResource(R.string.studio_download_image)
+    val historyDesc = stringResource(R.string.cd_history)
 
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -561,7 +576,7 @@ private fun GeneratorTopBar(
         ) {
             Icon(
                 imageVector = HudIcons.ArrowBack,
-                contentDescription = "Retour au scanner",
+                contentDescription = stringResource(R.string.studio_back_to_scanner),
                 tint = HudTextPrimary,
             )
         }
@@ -586,7 +601,7 @@ private fun GeneratorTopBar(
                     )
                     .clickable(onClick = onToggleStyleMenu)
                     .semantics(mergeDescendants = true) {
-                        contentDescription = "Menu de style et couleurs"
+                        contentDescription = styleMenuDesc
                         role = Role.Button
                     },
                 contentAlignment = Alignment.Center,
@@ -608,7 +623,7 @@ private fun GeneratorTopBar(
                     .border(1.dp, HudEmerald.copy(alpha = 0.65f), CircleShape)
                     .clickable(onClick = onSaveToHistory)
                     .semantics(mergeDescendants = true) {
-                        contentDescription = "Sauvegarder dans l'historique"
+                        contentDescription = saveDesc
                         role = Role.Button
                     },
                 contentAlignment = Alignment.Center,
@@ -633,7 +648,7 @@ private fun GeneratorTopBar(
                             isDownloadMenuExpanded = true
                         }
                         .semantics(mergeDescendants = true) {
-                            contentDescription = "Télécharger l'image"
+                            contentDescription = downloadDesc
                             role = Role.Button
                         },
                     contentAlignment = Alignment.Center,
@@ -683,7 +698,7 @@ private fun GeneratorTopBar(
                     .clip(RoundedCornerShape(50))
                     .clickable(onClick = onOpenHistory)
                     .semantics(mergeDescendants = true) {
-                        contentDescription = "Historique"
+                        contentDescription = historyDesc
                         role = Role.Button
                     },
                 shape = RoundedCornerShape(50),
@@ -734,7 +749,7 @@ private fun LatinMultiLineEditor(
         onValueChange = onInputTextChange,
         placeholder = {
             Text(
-                text = "Écrivez votre texte ici...",
+                text = stringResource(R.string.studio_input_placeholder),
                 color = HudTextSecondary,
             )
         },
@@ -743,7 +758,7 @@ private fun LatinMultiLineEditor(
                 IconButton(onClick = { onInputTextChange("") }) {
                     Icon(
                         imageVector = HudIcons.Close,
-                        contentDescription = "Effacer le texte",
+                        contentDescription = stringResource(R.string.studio_clear_text),
                     )
                 }
             }
@@ -899,7 +914,7 @@ private fun StyleAndColorsMenuPanel(
 
             // 3. Couleur des lettres + Color Picker
             Text(
-                text = "Lettres",
+                text = stringResource(R.string.studio_letters_color),
                 style = MaterialTheme.typography.labelSmall,
                 color = HudTextSecondary,
             )
@@ -913,7 +928,7 @@ private fun StyleAndColorsMenuPanel(
 
             // 4. Couleur du fond (avec damier DAO pour Transparent) + Color Picker
             Text(
-                text = "Fond",
+                text = stringResource(R.string.studio_background_color),
                 style = MaterialTheme.typography.labelSmall,
                 color = HudTextSecondary,
             )
@@ -939,6 +954,7 @@ private fun AlignmentIconButton(
         AurebeshTextAlignment.CENTER -> HudIcons.AlignCenter
         AurebeshTextAlignment.RIGHT -> HudIcons.AlignRight
     }
+    val alignLabel = stringResource(alignment.labelResId)
     Box(
         modifier = Modifier
             .size(36.dp)
@@ -947,7 +963,7 @@ private fun AlignmentIconButton(
             .border(1.dp, if (selected) HudCyan else HudSubtleBorder, CircleShape)
             .clickable(onClick = onClick)
             .semantics(mergeDescendants = true) {
-                contentDescription = alignment.label
+                contentDescription = alignLabel
                 role = Role.Button
             },
         contentAlignment = Alignment.Center,
@@ -978,6 +994,8 @@ private fun ColorSwatchRow(
     val scrollState = rememberScrollState()
     val isCustomColorSelected = !isTransparentSelected &&
         presets.none { !it.isTransparent && it.argb == selectedArgb }
+    val transparentBgDesc = stringResource(R.string.studio_transparent_bg)
+    val customColorDesc = stringResource(R.string.studio_custom_color)
 
     Row(
         modifier = Modifier
@@ -1009,7 +1027,7 @@ private fun ColorSwatchRow(
                         )
                         .clickable { onSelect(preset) }
                         .semantics {
-                            contentDescription = "Fond transparent"
+                            contentDescription = transparentBgDesc
                             role = Role.Button
                         }
                 )
@@ -1059,7 +1077,7 @@ private fun ColorSwatchRow(
                 )
                 .clickable(onClick = onOpenCustomColorPicker)
                 .semantics(mergeDescendants = true) {
-                    contentDescription = "Choisir une couleur personnalisée"
+                    contentDescription = customColorDesc
                     role = Role.Button
                 },
             contentAlignment = Alignment.Center,
@@ -1301,12 +1319,19 @@ private fun HsvColorPickerDialog(
         },
         confirmButton = {
             TextButton(onClick = { onColorConfirmed(currentColorArgb) }) {
-                Text("Valider", color = HudCyan, fontWeight = FontWeight.Bold)
+                Text(
+                    text = stringResource(R.string.validate),
+                    color = HudCyan,
+                    fontWeight = FontWeight.Bold,
+                )
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Annuler", color = HudTextSecondary)
+                Text(
+                    text = stringResource(R.string.cancel),
+                    color = HudTextSecondary,
+                )
             }
         },
     )

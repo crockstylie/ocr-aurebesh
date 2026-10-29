@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -54,6 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import fr.antoinehory.ocraurebesh.R
 import fr.antoinehory.ocraurebesh.camera.CameraPreview
 import fr.antoinehory.ocraurebesh.ui.components.CameraPermissionGate
 import fr.antoinehory.ocraurebesh.ui.components.HudIcons
@@ -85,12 +87,13 @@ fun ScannerRoute(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val clipboardLabel = stringResource(R.string.clipboard_label_translation)
 
     CameraPermissionGate(modifier = modifier) {
         ScannerScreen(
             uiState = uiState,
             onEvent = viewModel::onEvent,
-            onCopyText = { text -> copyToClipboard(context, text) },
+            onCopyText = { text -> copyToClipboard(context, clipboardLabel, text) },
             onOpenGenerator = { initialText ->
                 context.startActivity(
                     AurebeshGeneratorActivity.createIntent(
@@ -135,9 +138,9 @@ fun ScannerScreen(
     onEvent: (ScannerUiEvent) -> Unit,
     onCopyText: (String) -> Unit,
     onOpenGenerator: (String) -> Unit,
-    onOpenInfo: () -> Unit = {},
     cameraPreviewContent: @Composable (Modifier) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenInfo: () -> Unit = {},
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val activeMessage = uiState.errorMessage ?: uiState.statusMessage
@@ -329,7 +332,7 @@ private fun ScannerLandscapeLayout(
             ) {
                 HudCircleIconButton(
                     icon = HudIcons.Info,
-                    contentDescription = "Informations",
+                    contentDescription = stringResource(R.string.cd_info),
                     tint = HudTextPrimary,
                     onClick = onOpenInfo,
                 )
@@ -337,7 +340,7 @@ private fun ScannerLandscapeLayout(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HudCircleIconButton(
                         icon = HudIcons.Edit,
-                        contentDescription = "Studio Aurebesh",
+                        contentDescription = stringResource(R.string.cd_studio_aurebesh),
                         tint = HudCyan,
                         onClick = onOpenGenerator,
                     )
@@ -345,7 +348,7 @@ private fun ScannerLandscapeLayout(
                     if (uiState.isFlashAvailable) {
                         HudCircleIconButton(
                             icon = if (uiState.isTorchEnabled) HudIcons.FlashOn else HudIcons.FlashOff,
-                            contentDescription = "Torche",
+                            contentDescription = stringResource(R.string.cd_torch),
                             isActive = uiState.isTorchEnabled,
                             activeColor = HudAmber,
                             activeBgColor = HudAmberDim,
@@ -393,7 +396,11 @@ private fun ScannerLandscapeLayout(
                         contentAlignment = if (hasText) Alignment.TopStart else Alignment.Center,
                     ) {
                         Text(
-                            text = if (hasText) uiState.recognizedText else "Scannez un texte Aurebesh...",
+                            text = if (hasText) {
+                                uiState.recognizedText
+                            } else {
+                                stringResource(R.string.scanner_placeholder)
+                            },
                             style = if (hasText) {
                                 MaterialTheme.typography.titleMedium
                             } else {
@@ -415,19 +422,19 @@ private fun ScannerLandscapeLayout(
                         ) {
                             HudCircleIconButton(
                                 icon = HudIcons.Copy,
-                                contentDescription = "Copier",
+                                contentDescription = stringResource(R.string.cd_copy),
                                 tint = HudCyan,
                                 onClick = { onCopyText(uiState.recognizedText) },
                             )
                             HudCircleIconButton(
                                 icon = HudIcons.BookmarkAdd,
-                                contentDescription = "Sauvegarder",
+                                contentDescription = stringResource(R.string.cd_save),
                                 tint = HudEmerald,
                                 onClick = { onEvent(ScannerUiEvent.SaveCurrentScan) },
                             )
                             HudCircleIconButton(
                                 icon = HudIcons.Close,
-                                contentDescription = "Effacer",
+                                contentDescription = stringResource(R.string.cd_clear),
                                 tint = HudTextSecondary,
                                 onClick = { onEvent(ScannerUiEvent.ClearCurrentScan) },
                             )
@@ -457,7 +464,7 @@ private fun ScannerTopHudBar(
     ) {
         HudCircleIconButton(
             icon = HudIcons.Info,
-            contentDescription = "Informations",
+            contentDescription = stringResource(R.string.cd_info),
             tint = HudTextPrimary,
             onClick = onOpenInfo,
         )
@@ -468,7 +475,7 @@ private fun ScannerTopHudBar(
         ) {
             HudCircleIconButton(
                 icon = HudIcons.Edit,
-                contentDescription = "Studio Aurebesh",
+                contentDescription = stringResource(R.string.cd_studio_aurebesh),
                 tint = HudCyan,
                 onClick = onOpenGenerator,
             )
@@ -476,7 +483,7 @@ private fun ScannerTopHudBar(
             if (isFlashAvailable) {
                 HudCircleIconButton(
                     icon = if (isTorchEnabled) HudIcons.FlashOn else HudIcons.FlashOff,
-                    contentDescription = "Torche",
+                    contentDescription = stringResource(R.string.cd_torch),
                     isActive = isTorchEnabled,
                     activeColor = HudAmber,
                     activeBgColor = HudAmberDim,
@@ -530,7 +537,7 @@ private fun TranslationHudDock(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "Scannez un texte Aurebesh...",
+                    text = stringResource(R.string.scanner_placeholder),
                     style = MaterialTheme.typography.bodyMedium,
                     color = HudTextSecondary,
                 )
@@ -571,19 +578,19 @@ private fun TranslationHudDock(
                 ) {
                     HudCircleIconButton(
                         icon = HudIcons.Copy,
-                        contentDescription = "Copier",
+                        contentDescription = stringResource(R.string.cd_copy),
                         tint = HudCyan,
                         onClick = onCopyScan,
                     )
                     HudCircleIconButton(
                         icon = HudIcons.BookmarkAdd,
-                        contentDescription = "Sauvegarder",
+                        contentDescription = stringResource(R.string.cd_save),
                         tint = HudEmerald,
                         onClick = onSaveScan,
                     )
                     HudCircleIconButton(
                         icon = HudIcons.Close,
-                        contentDescription = "Effacer",
+                        contentDescription = stringResource(R.string.cd_clear),
                         tint = HudTextSecondary,
                         onClick = onClearScan,
                     )
@@ -642,12 +649,13 @@ private fun HudHistoryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val historyDesc = stringResource(R.string.cd_history)
     Surface(
         modifier = modifier
             .clip(RoundedCornerShape(50))
             .clickable(onClick = onClick)
             .semantics(mergeDescendants = true) {
-                contentDescription = "Historique"
+                contentDescription = historyDesc
                 role = Role.Button
             },
         shape = RoundedCornerShape(50),
@@ -682,9 +690,9 @@ private fun HudHistoryButton(
     }
 }
 
-private fun copyToClipboard(context: Context, text: String) {
+private fun copyToClipboard(context: Context, label: String, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-    val clip = ClipData.newPlainText("Traduction Aurebesh", text)
+    val clip = ClipData.newPlainText(label, text)
     clipboard?.setPrimaryClip(clip)
 }
 

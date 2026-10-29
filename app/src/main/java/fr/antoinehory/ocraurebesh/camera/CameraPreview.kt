@@ -32,9 +32,11 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import fr.antoinehory.ocraurebesh.R
 import java.util.concurrent.Executors
 
 /**
@@ -65,6 +67,7 @@ fun CameraPreview(
     val currentFrozenCallback by rememberUpdatedState(onFrozenFrameCaptured)
     val currentFlashCallback by rememberUpdatedState(onFlashAvailabilityChanged)
     val currentErrorCallback by rememberUpdatedState(onCameraError)
+    val cameraStartErrorText by rememberUpdatedState(stringResource(R.string.camera_start_error))
 
     DisposableEffect(currentView) {
         currentView.keepScreenOn = true
@@ -165,7 +168,7 @@ fun CameraPreview(
                 }
             } catch (e: Exception) {
                 currentErrorCallback(
-                    e.localizedMessage ?: "Impossible de démarrer la caméra"
+                    e.localizedMessage ?: cameraStartErrorText
                 )
             }
         }
@@ -212,7 +215,7 @@ fun CameraPreview(
             val sameOrientation = isScreenLandscape == isBitmapLandscape
             Image(
                 bitmap = frozenFrameBitmap.asImageBitmap(),
-                contentDescription = "Image caméra figée",
+                contentDescription = stringResource(R.string.cd_frozen_frame),
                 contentScale = if (sameOrientation) ContentScale.Crop else ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxSize()

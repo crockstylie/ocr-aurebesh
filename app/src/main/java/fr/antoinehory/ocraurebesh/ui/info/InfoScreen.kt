@@ -1,5 +1,9 @@
 package fr.antoinehory.ocraurebesh.ui.info
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,8 +37,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -46,6 +52,7 @@ import fr.antoinehory.ocraurebesh.ui.theme.HudAmber
 import fr.antoinehory.ocraurebesh.ui.theme.HudAmberDim
 import fr.antoinehory.ocraurebesh.ui.theme.HudBackground
 import fr.antoinehory.ocraurebesh.ui.theme.HudCyan
+import fr.antoinehory.ocraurebesh.ui.theme.HudCyanDim
 import fr.antoinehory.ocraurebesh.ui.theme.HudGlassBorder
 import fr.antoinehory.ocraurebesh.ui.theme.HudGlassButton
 import fr.antoinehory.ocraurebesh.ui.theme.HudGlassSurface
@@ -55,14 +62,15 @@ import fr.antoinehory.ocraurebesh.ui.theme.HudTextSecondary
 import fr.antoinehory.ocraurebesh.ui.theme.OCRAurebeshTheme
 
 /**
- * Écran Informations personnelles, réseaux sociaux et bouton de donation PayPal,
- * adapté de l'application Bonne Fête avec l'esthétique HUD d'OCR Aurebesh.
+ * Écran Informations personnelles, réseaux sociaux, bouton de notation 5 étoiles Play Store
+ * et bouton de donation PayPal.
  */
 @Composable
 fun InfoScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
 
     Scaffold(
@@ -94,14 +102,14 @@ fun InfoScreen(
                 ) {
                     Icon(
                         imageVector = HudIcons.ArrowBack,
-                        contentDescription = "Retour",
+                        contentDescription = stringResource(R.string.back),
                         tint = HudTextPrimary,
                     )
                 }
             }
 
             Text(
-                text = "Mes informations personnelles",
+                text = stringResource(R.string.personal_info_title),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = HudTextPrimary,
@@ -124,30 +132,31 @@ fun InfoScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     InfoItemColumn(
-                        label = "Développeur",
+                        label = stringResource(R.string.developer_label),
                         value = "Antoine Crock HORY",
                     )
                     InfoItemColumn(
-                        label = "Site web",
+                        label = stringResource(R.string.website_label),
                         value = "antoinehory.fr",
                         isLink = true,
                         linkUri = "https://antoinehory.fr",
                     )
                     InfoItemColumn(
-                        label = "Email",
+                        label = stringResource(R.string.email_label),
                         value = "contact@antoinehory.fr",
                         isLink = true,
                         linkUri = "mailto:contact@antoinehory.fr",
                     )
                     InfoItemColumn(
-                        label = "Donate",
+                        label = stringResource(R.string.donate_label),
                         value = "paypal.me/kuroku",
                         isLink = true,
                         linkUri = "https://paypal.me/kuroku",
                     )
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
+                    // Bouton de don PayPal
                     Button(
                         onClick = { uriHandler.openUri("https://paypal.me/kuroku") },
                         shape = RoundedCornerShape(50),
@@ -156,10 +165,29 @@ fun InfoScreen(
                             contentColor = HudAmber,
                         ),
                         border = BorderStroke(1.dp, HudAmber),
-                        modifier = Modifier.fillMaxWidth(0.8f),
+                        modifier = Modifier.fillMaxWidth(0.85f),
                     ) {
                         Text(
-                            text = "Faire un don (PayPal)",
+                            text = stringResource(R.string.donate_button),
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Bouton pour noter l'application 5 étoiles sur le Google Play Store
+                    Button(
+                        onClick = { openPlayStoreListing(context) },
+                        shape = RoundedCornerShape(50),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = HudCyanDim,
+                            contentColor = HudCyan,
+                        ),
+                        border = BorderStroke(1.dp, HudCyan),
+                        modifier = Modifier.fillMaxWidth(0.85f),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.rate_app_button),
                             fontWeight = FontWeight.Bold,
                         )
                     }
@@ -169,7 +197,7 @@ fun InfoScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "Retrouvez-moi sur :",
+                text = stringResource(R.string.find_me_on),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = HudTextPrimary,
@@ -225,6 +253,27 @@ fun InfoScreen(
                 }
             }
         }
+    }
+}
+
+private fun openPlayStoreListing(context: Context) {
+    val packageName = context.packageName
+    val marketIntent = Intent(
+        Intent.ACTION_VIEW,
+        Uri.parse("market://details?id=$packageName"),
+    ).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    try {
+        context.startActivity(marketIntent)
+    } catch (_: ActivityNotFoundException) {
+        val webIntent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("https://play.google.com/store/apps/details?id=$packageName"),
+        ).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(webIntent)
     }
 }
 

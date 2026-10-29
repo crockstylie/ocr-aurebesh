@@ -1,0 +1,91 @@
+<resources>
+    <string name="app_name">OCR Aurebesh</string>
+    <string name="activity_studio_label">Studio Aurebesh</string>
+    <string name="activity_info_label">Informations</string>
+
+    <!-- Common -->
+    <string name="back">Retour</string>
+    <string name="cancel">Annuler</string>
+    <string name="confirm_ok">OK</string>
+    <string name="validate">Valider</string>
+    <string name="clipboard_label_translation">Traduction Aurebesh</string>
+    <string name="copied_to_clipboard">Texte copié dans le presse-papiers</string>
+
+    <!-- Camera Permission Gate -->
+    <string name="camera_permission_title">Accès Caméra Requis</string>
+    <string name="camera_permission_permanently_denied">L\'autorisation d\'accès à la caméra a été refusée définitivement. Ouvrez les paramètres de l\'application pour activer la caméra et traduire les textes en Aurebesh.</string>
+    <string name="camera_permission_rationale">OCR Aurebesh a besoin de la caméra uniquement pour analyser en direct les glyphes Aurebesh dans le viseur. Aucune image n\'est envoyée sur Internet.</string>
+    <string name="camera_permission_initial">Autorisez l\'accès à la caméra pour pointer votre téléphone vers une inscription en Aurebesh et afficher instantanément sa traduction.</string>
+    <string name="camera_permission_open_settings">Ouvrir les paramètres</string>
+    <string name="camera_permission_allow">Autoriser la caméra</string>
+
+    <!-- Scanner Screen -->
+    <string name="scanner_placeholder">Scannez un texte Aurebesh...</string>
+    <string name="cd_info">Informations</string>
+    <string name="cd_studio_aurebesh">Studio Aurebesh</string>
+    <string name="cd_torch">Torche</string>
+    <string name="cd_history">Historique</string>
+    <string name="cd_copy">Copier</string>
+    <string name="cd_save">Sauvegarder</string>
+    <string name="cd_clear">Effacer</string>
+    <string name="cd_frozen_frame">Image caméra figée</string>
+    <string name="camera_start_error">Impossible de démarrer la caméra</string>
+    <string name="ocr_init_error">Erreur d\'initialisation OCR</string>
+    <string name="msg_translation_saved">Traduction enregistrée dans l\'historique</string>
+    <string name="msg_history_cleared">Historique effacé</string>
+
+    <!-- History Sheet -->
+    <string name="history_title">Historique</string>
+    <string name="history_clear_all">Tout effacer</string>
+    <string name="history_filter_all">Tous</string>
+    <string name="history_filter_favorites">Favoris</string>
+    <string name="history_confirm_clear_all">Tout l\'historique va être supprimé. Confirmer ?</string>
+    <string name="history_confirm_delete_item">Supprimer « %1$s » ?</string>
+    <string name="history_empty_favorites">Aucun favori enregistré.</string>
+    <string name="history_empty_all">Aucune traduction enregistrée.</string>
+    <string name="cd_edit_in_studio">Modifier dans Studio Aurebesh</string>
+    <string name="cd_favorite">Favori</string>
+    <string name="cd_delete">Supprimer</string>
+
+    <!-- Aurebesh Studio / Generator -->
+    <string name="studio_back_to_scanner">Retour au scanner</string>
+    <string name="studio_style_menu">Menu de style et couleurs</string>
+    <string name="studio_save_to_history">Sauvegarder dans l\'historique</string>
+    <string name="studio_download_image">Télécharger l\'image</string>
+    <string name="studio_input_placeholder">Écrivez votre texte ici...</string>
+    <string name="studio_clear_text">Effacer le texte</string>
+    <string name="studio_letters_color">Lettres</string>
+    <string name="studio_background_color">Fond</string>
+    <string name="studio_picker_title_letters">Couleur des lettres</string>
+    <string name="studio_picker_title_background">Couleur du fond</string>
+    <string name="studio_transparent_bg">Fond transparent</string>
+    <string name="studio_custom_color">Choisir une couleur personnalisée</string>
+    <string name="studio_align_left">Gauche</string>
+    <string name="studio_align_center">Centre</string>
+    <string name="studio_align_right">Droite</string>
+    <string name="studio_msg_downloaded">Téléchargé : %1$s</string>
+    <string name="studio_msg_write_before_save">Écrivez un texte avant de sauvegarder</string>
+    <string name="studio_msg_saved_to_history">Texte enregistré dans l\'historique</string>
+    <string name="studio_msg_save_error">Erreur lors de la sauvegarde</string>
+    <string name="studio_msg_export_error">Erreur lors de l\'export</string>
+
+    <!-- Export & Notifications -->
+    <string name="notif_channel_downloads_name">Téléchargements Aurebesh</string>
+    <string name="notif_channel_downloads_desc">Notifications de téléchargement et partage des créations Aurebesh</string>
+    <string name="notif_download_title">Image Aurebesh téléchargée (%1$s)</string>
+    <string name="notif_download_summary">Appuyez pour ouvrir ou utilisez Partager</string>
+    <string name="action_share">Partager</string>
+    <string name="action_open">Ouvrir</string>
+    <string name="chooser_open_file">Ouvrir %1$s</string>
+    <string name="chooser_share_file">Partager %1$s</string>
+
+    <!-- Info Screen -->
+    <string name="personal_info_title">Mes informations personnelles</string>
+    <string name="developer_label">Développeur</string>
+    <string name="website_label">Site web</string>
+    <string name="email_label">Email</string>
+    <string name="donate_label">Donate</string>
+    <string name="donate_button">Faire un don (PayPal)</string>
+    <string name="rate_app_button">Noter 5 ⭐ sur le Play Store</string>
+    <string name="find_me_on">Retrouvez-moi sur :</string>
+</resources>

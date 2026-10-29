@@ -1,7 +1,9 @@
 package fr.antoinehory.ocraurebesh.ui.generator
 
+import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.text.style.TextAlign
+import fr.antoinehory.ocraurebesh.R
 
 /**
  * Polices Aurebesh disponibles dans `assets/fonts/`.
@@ -25,12 +27,12 @@ enum class AurebeshFontOption(
  * Alignement horizontal du texte Aurebesh.
  */
 enum class AurebeshTextAlignment(
-    val label: String,
+    @StringRes val labelResId: Int,
     val composeTextAlign: TextAlign,
 ) {
-    LEFT("Gauche", TextAlign.Start),
-    CENTER("Centre", TextAlign.Center),
-    RIGHT("Droite", TextAlign.End),
+    LEFT(R.string.studio_align_left, TextAlign.Start),
+    CENTER(R.string.studio_align_center, TextAlign.Center),
+    RIGHT(R.string.studio_align_right, TextAlign.End),
 }
 
 /**
@@ -59,22 +61,22 @@ data class ColorPreset(
 object AurebeshColorPresets {
     val textColors: List<ColorPreset> = listOf(
         ColorPreset("Cyan Holo", 0xFF00E5FF.toInt()),
-        ColorPreset("Blanc", 0xFFF0F6FC.toInt()),
-        ColorPreset("Ambre", 0xFFFFB300.toInt()),
-        ColorPreset("Émeraude", 0xFF00E676.toInt()),
-        ColorPreset("Rouge Sith", 0xFFFF3D3D.toInt()),
-        ColorPreset("Bleu Jedi", 0xFF2979FF.toInt()),
-        ColorPreset("Violet", 0xFFD500F9.toInt()),
-        ColorPreset("Noir", 0xFF0A0E14.toInt()),
+        ColorPreset("White", 0xFFF0F6FC.toInt()),
+        ColorPreset("Amber", 0xFFFFB300.toInt()),
+        ColorPreset("Emerald", 0xFF00E676.toInt()),
+        ColorPreset("Sith Red", 0xFFFF3D3D.toInt()),
+        ColorPreset("Jedi Blue", 0xFF2979FF.toInt()),
+        ColorPreset("Purple", 0xFFD500F9.toInt()),
+        ColorPreset("Black", 0xFF0A0E14.toInt()),
     )
 
     val backgroundColors: List<ColorPreset> = listOf(
-        ColorPreset("Noir Spatial", 0xFF070B10.toInt()),
-        ColorPreset("Blanc", 0xFFFFFFFF.toInt()),
-        ColorPreset("Gris Impérial", 0xFF1A2432.toInt()),
-        ColorPreset("Bleu Sombre", 0xFF0B192C.toInt()),
-        ColorPreset("Ambre Sombre", 0xFF261905.toInt()),
-        ColorPreset("Rouge Sombre", 0xFF280909.toInt()),
+        ColorPreset("Space Black", 0xFF070B10.toInt()),
+        ColorPreset("White", 0xFFFFFFFF.toInt()),
+        ColorPreset("Imperial Gray", 0xFF1A2432.toInt()),
+        ColorPreset("Dark Blue", 0xFF0B192C.toInt()),
+        ColorPreset("Dark Amber", 0xFF261905.toInt()),
+        ColorPreset("Dark Red", 0xFF280909.toInt()),
         ColorPreset("Transparent", 0x00000000, isTransparent = true),
     )
 }

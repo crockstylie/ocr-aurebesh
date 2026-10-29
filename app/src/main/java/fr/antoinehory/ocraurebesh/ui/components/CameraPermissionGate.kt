@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -36,6 +37,7 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
+import fr.antoinehory.ocraurebesh.R
 import fr.antoinehory.ocraurebesh.ui.theme.OCRAurebeshTheme
 
 /**
@@ -115,7 +117,7 @@ fun CameraPermissionRequestContent(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
-                        text = "Accès Caméra Requis",
+                        text = stringResource(R.string.camera_permission_title),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
@@ -125,14 +127,11 @@ fun CameraPermissionRequestContent(
 
                     val description = when {
                         isPermanentlyDenied ->
-                            "L'autorisation d'accès à la caméra a été refusée définitivement. " +
-                                "Ouvrez les paramètres de l'application pour activer la caméra et traduire les textes en Aurebesh."
+                            stringResource(R.string.camera_permission_permanently_denied)
                         shouldShowRationale ->
-                            "OCRAurebesh a besoin de la caméra uniquement pour analyser en direct " +
-                                "les glyphes Aurebesh dans le viseur. Aucune image n'est envoyée sur Internet."
+                            stringResource(R.string.camera_permission_rationale)
                         else ->
-                            "Autorisez l'accès à la caméra pour pointer votre téléphone vers une inscription " +
-                                "en Aurebesh et afficher instantanément sa traduction."
+                            stringResource(R.string.camera_permission_initial)
                     }
 
                     Text(
@@ -152,9 +151,9 @@ fun CameraPermissionRequestContent(
                     ) {
                         Text(
                             text = if (isPermanentlyDenied) {
-                                "Ouvrir les paramètres"
+                                stringResource(R.string.camera_permission_open_settings)
                             } else {
-                                "Autoriser la caméra"
+                                stringResource(R.string.camera_permission_allow)
                             }
                         )
                     }

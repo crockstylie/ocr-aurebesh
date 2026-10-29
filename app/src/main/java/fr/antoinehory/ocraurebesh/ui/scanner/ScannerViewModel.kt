@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import fr.antoinehory.ocraurebesh.R
 import fr.antoinehory.ocraurebesh.camera.AurebeshImageAnalyzer
 import fr.antoinehory.ocraurebesh.data.local.AppDatabase
 import fr.antoinehory.ocraurebesh.data.repository.ScanHistoryRepository
@@ -27,6 +28,15 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
+ * Chaînes localisées utilisées par [ScannerViewModel] (avec valeurs par défaut pour les tests JVM).
+ */
+data class ScannerMessages(
+    val translationSaved: String = "Traduction enregistrée dans l'historique",
+    val historyCleared: String = "Historique effacé",
+    val ocrInitError: String = "Erreur d'initialisation OCR",
+)
+
+/**
  * ViewModel principal orchestrant le flux caméra, le moteur OCR Aurebesh et l'historique Room.
  *
  * Inclut un stabilisateur temporel anti-troncature et anti-clignotement ainsi qu'une passe
@@ -36,6 +46,7 @@ import kotlinx.coroutines.launch
 class ScannerViewModel(
     private val ocrEngine: OcrRecognizer,
     private val historyRepository: ScanHistoryRepository,
+    private val messages: ScannerMessages = ScannerMessages(),
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ScannerUiState())
@@ -148,7 +159,7 @@ class ScannerViewModel(
             ScannerUiEvent.ClearAllHistory -> {
                 viewModelScope.launch {
                     historyRepository.clearHistory()
-                    _uiState.update { it.copy(statusMessage = "Historique effacé") }
+                    _uiState.update { it.copy(statusMessage = messages.historyCleared) }
                 }
             }
 
@@ -195,7 +206,7 @@ class ScannerViewModel(
                     _uiState.update {
                         it.copy(
                             isOcrReady = false,
-                            errorMessage = err.localizedMessage ?: "Erreur d'initialisation OCR",
+                            errorMessage = err.localizedMessage ?: messages.ocrInitError,
                         )
                     }
                 }
@@ -238,8 +249,6 @@ class ScannerViewModel(
                         if (!isFromFrozenCapture) {
                             return@update state
                         }
-                        // Résultat issu de l'analyse dédiée sur l'image figée :
-                        // met à jour si aucun texte n'était affiché ou si la capture figée est plus complète / fiable
                         val shouldUpdateFrozen =
                             currentText.isEmpty() ||
                                 newLines > currentLines ||
@@ -258,7 +267,6 @@ class ScannerViewModel(
                         }
                     }
 
-                    // 1. Premier texte acquis lorsque l'affichage est vide
                     if (currentText.isEmpty()) {
                         consecutiveShorterFrames = 0
                         candidateText = result.text
@@ -270,7 +278,6 @@ class ScannerViewModel(
                         )
                     }
 
-                    // 2. Même texte exactement : rafraîchit la confiance et réinitialise les compteurs
                     if (result.text == currentText) {
                         consecutiveShorterFrames = 0
                         candidateText = result.text
@@ -281,8 +288,6 @@ class ScannerViewModel(
                         )
                     }
 
-                    // 3. Anti-troncature : si un léger mouvement fait perdre des lignes ou > 15% des caractères,
-                    // on verrouille le texte complet pendant SHORTER_TEXT_HOLD_FRAMES frames consécutives
                     val isTruncatedOrShorter =
                         newLines < currentLines || newLen < (currentLen * 85) / 100
                     if (isTruncatedOrShorter) {
@@ -302,8 +307,6 @@ class ScannerViewModel(
 
                     consecutiveShorterFrames = 0
 
-                    // 4. Texte plus complet (plus de lignes ou plus de caractères acquis à la mise au point) :
-                    // mise à jour immédiate pour afficher tout le paragraphe dès qu'il est net
                     val isMoreComplete =
                         (newLines > currentLines && newLen >= currentLen) ||
                             (newLines == currentLines && newLen > currentLen && result.confidence >= state.confidence - 8)
@@ -317,8 +320,6 @@ class ScannerViewModel(
                         )
                     }
 
-                    // 5. Même gabarit (même nombre de lignes et longueur similaire) :
-                    // évite que le texte ne tremble lettre par lettre au moindre micro-mouvement
                     if (result.text == candidateText) {
                         candidateMatchCount++
                     } else {
@@ -344,8 +345,6 @@ class ScannerViewModel(
             }
 
             OcrResult.Empty -> {
-                // Tolère plusieurs frames vides consécutifs (micro-flou de bougé) avant d'effacer
-                // le texte, tout en nettoyant l'écran si l'utilisateur vise ailleurs (~1.5s)
                 if (!_uiState.value.isPaused) {
                     consecutiveEmptyFrames++
                     if (consecutiveEmptyFrames >= EMPTY_FRAMES_TO_CLEAR) {
@@ -384,7 +383,7 @@ class ScannerViewModel(
                 confidence = currentState.confidence,
             )
             _uiState.update {
-                it.copy(statusMessage = "Traduction enregistrée dans l'historique")
+                it.copy(statusMessage = messages.translationSaved)
             }
         }
     }
@@ -411,9 +410,15 @@ class ScannerViewModel(
                     val ocrEngine = AurebeshOcrEngine(tessDataManager)
                     val database = AppDatabase.getInstance(appContext)
                     val repository = ScanHistoryRepository(database.scanHistoryDao())
+                    val messages = ScannerMessages(
+                        translationSaved = context.getString(R.string.msg_translation_saved),
+                        historyCleared = context.getString(R.string.msg_history_cleared),
+                        ocrInitError = context.getString(R.string.ocr_init_error),
+                    )
                     return ScannerViewModel(
                         ocrEngine = ocrEngine,
                         historyRepository = repository,
+                        messages = messages,
                     ) as T
                 }
             }

@@ -188,7 +188,7 @@ object AurebeshImageExporter {
      * Ouvre directement la feuille de partage système Android pour un fichier exporté.
      */
     fun shareExportedFile(context: Context, exportedFile: ExportedAurebeshFile) {
-        val shareIntent = createShareChooserIntent(exportedFile).apply {
+        val shareIntent = createShareChooserIntent(context, exportedFile).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(shareIntent)
@@ -221,12 +221,18 @@ object AurebeshImageExporter {
             val openPendingIntent = PendingIntent.getActivity(
                 context,
                 notificationId,
-                Intent.createChooser(openIntent, "Ouvrir ${exportedFile.fileName}"),
+                Intent.createChooser(
+                    openIntent,
+                    context.getString(
+                        fr.antoinehory.ocraurebesh.R.string.chooser_open_file,
+                        exportedFile.fileName,
+                    ),
+                ),
                 pendingFlags,
             )
 
             // Intent pour l'action "Partager" dans la notification
-            val shareChooserIntent = createShareChooserIntent(exportedFile)
+            val shareChooserIntent = createShareChooserIntent(context, exportedFile)
             val sharePendingIntent = PendingIntent.getActivity(
                 context,
                 notificationId + 1,
@@ -236,20 +242,25 @@ object AurebeshImageExporter {
 
             val builder = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
-                .setContentTitle("Image Aurebesh téléchargée (${exportedFile.format.label})")
-                .setContentText("${exportedFile.fileName} • Téléchargements/OCRAurebesh")
+                .setContentTitle(
+                    context.getString(
+                        fr.antoinehory.ocraurebesh.R.string.notif_download_title,
+                        exportedFile.format.label,
+                    )
+                )
+                .setContentText("${exportedFile.fileName} • Downloads/OCRAurebesh")
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_STATUS)
                 .setAutoCancel(true)
                 .setContentIntent(openPendingIntent)
                 .addAction(
                     android.R.drawable.ic_menu_share,
-                    "Partager",
+                    context.getString(fr.antoinehory.ocraurebesh.R.string.action_share),
                     sharePendingIntent,
                 )
                 .addAction(
                     android.R.drawable.ic_menu_view,
-                    "Ouvrir",
+                    context.getString(fr.antoinehory.ocraurebesh.R.string.action_open),
                     openPendingIntent,
                 )
 
@@ -259,7 +270,9 @@ object AurebeshImageExporter {
                     NotificationCompat.BigPictureStyle()
                         .bigPicture(previewBitmap)
                         .bigLargeIcon(null as Bitmap?)
-                        .setSummaryText("Appuyez pour ouvrir ou utilisez Partager")
+                        .setSummaryText(
+                            context.getString(fr.antoinehory.ocraurebesh.R.string.notif_download_summary)
+                        )
                 )
             }
 
@@ -269,14 +282,23 @@ object AurebeshImageExporter {
         }
     }
 
-    private fun createShareChooserIntent(exportedFile: ExportedAurebeshFile): Intent {
+    private fun createShareChooserIntent(
+        context: Context,
+        exportedFile: ExportedAurebeshFile,
+    ): Intent {
         val sendIntent = Intent(Intent.ACTION_SEND).apply {
             type = exportedFile.mimeType
             putExtra(Intent.EXTRA_STREAM, exportedFile.uri)
             clipData = ClipData.newRawUri(exportedFile.fileName, exportedFile.uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        return Intent.createChooser(sendIntent, "Partager ${exportedFile.fileName}").apply {
+        return Intent.createChooser(
+            sendIntent,
+            context.getString(
+                fr.antoinehory.ocraurebesh.R.string.chooser_share_file,
+                exportedFile.fileName,
+            ),
+        ).apply {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
@@ -286,10 +308,11 @@ object AurebeshImageExporter {
             ?: return
         val channel = NotificationChannel(
             NOTIFICATION_CHANNEL_ID,
-            "Téléchargements Aurebesh",
+            context.getString(fr.antoinehory.ocraurebesh.R.string.notif_channel_downloads_name),
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "Notifications de téléchargement et partage des créations Aurebesh"
+            description =
+                context.getString(fr.antoinehory.ocraurebesh.R.string.notif_channel_downloads_desc)
         }
         manager.createNotificationChannel(channel)
     }

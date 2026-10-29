@@ -1,3 +1,91 @@
 <resources>
     <string name="app_name">OCR Aurebesh</string>
+    <string name="activity_studio_label">Aurebesh Studio</string>
+    <string name="activity_info_label">Information</string>
+
+    <!-- Common -->
+    <string name="back">Back</string>
+    <string name="cancel">Cancel</string>
+    <string name="confirm_ok">OK</string>
+    <string name="validate">Apply</string>
+    <string name="clipboard_label_translation">Aurebesh Translation</string>
+    <string name="copied_to_clipboard">Text copied to clipboard</string>
+
+    <!-- Camera Permission Gate -->
+    <string name="camera_permission_title">Camera Access Required</string>
+    <string name="camera_permission_permanently_denied">Camera permission has been permanently denied. Open the app settings to enable the camera and translate Aurebesh texts.</string>
+    <string name="camera_permission_rationale">OCR Aurebesh only needs the camera to analyze Aurebesh glyphs live in the viewfinder. No images are ever sent over the Internet.</string>
+    <string name="camera_permission_initial">Grant camera access to point your phone at an Aurebesh inscription and instantly display its translation.</string>
+    <string name="camera_permission_open_settings">Open settings</string>
+    <string name="camera_permission_allow">Allow camera</string>
+
+    <!-- Scanner Screen -->
+    <string name="scanner_placeholder">Scan an Aurebesh text...</string>
+    <string name="cd_info">Information</string>
+    <string name="cd_studio_aurebesh">Aurebesh Studio</string>
+    <string name="cd_torch">Flashlight</string>
+    <string name="cd_history">History</string>
+    <string name="cd_copy">Copy</string>
+    <string name="cd_save">Save</string>
+    <string name="cd_clear">Clear</string>
+    <string name="cd_frozen_frame">Frozen camera frame</string>
+    <string name="camera_start_error">Unable to start camera</string>
+    <string name="ocr_init_error">OCR initialization error</string>
+    <string name="msg_translation_saved">Translation saved to history</string>
+    <string name="msg_history_cleared">History cleared</string>
+
+    <!-- History Sheet -->
+    <string name="history_title">History</string>
+    <string name="history_clear_all">Clear all</string>
+    <string name="history_filter_all">All</string>
+    <string name="history_filter_favorites">Favorites</string>
+    <string name="history_confirm_clear_all">All history will be deleted. Confirm?</string>
+    <string name="history_confirm_delete_item">Delete \"%1$s\"?</string>
+    <string name="history_empty_favorites">No favorites saved yet.</string>
+    <string name="history_empty_all">No translations saved yet.</string>
+    <string name="cd_edit_in_studio">Edit in Aurebesh Studio</string>
+    <string name="cd_favorite">Favorite</string>
+    <string name="cd_delete">Delete</string>
+
+    <!-- Aurebesh Studio / Generator -->
+    <string name="studio_back_to_scanner">Back to scanner</string>
+    <string name="studio_style_menu">Style and colors menu</string>
+    <string name="studio_save_to_history">Save to history</string>
+    <string name="studio_download_image">Download image</string>
+    <string name="studio_input_placeholder">Write your text here...</string>
+    <string name="studio_clear_text">Clear text</string>
+    <string name="studio_letters_color">Letters</string>
+    <string name="studio_background_color">Background</string>
+    <string name="studio_picker_title_letters">Letters color</string>
+    <string name="studio_picker_title_background">Background color</string>
+    <string name="studio_transparent_bg">Transparent background</string>
+    <string name="studio_custom_color">Choose custom color</string>
+    <string name="studio_align_left">Left</string>
+    <string name="studio_align_center">Center</string>
+    <string name="studio_align_right">Right</string>
+    <string name="studio_msg_downloaded">Downloaded: %1$s</string>
+    <string name="studio_msg_write_before_save">Write some text before saving</string>
+    <string name="studio_msg_saved_to_history">Text saved to history</string>
+    <string name="studio_msg_save_error">Error while saving</string>
+    <string name="studio_msg_export_error">Error while exporting</string>
+
+    <!-- Export & Notifications -->
+    <string name="notif_channel_downloads_name">Aurebesh Downloads</string>
+    <string name="notif_channel_downloads_desc">Download and share notifications for Aurebesh creations</string>
+    <string name="notif_download_title">Aurebesh image downloaded (%1$s)</string>
+    <string name="notif_download_summary">Tap to open or use Share</string>
+    <string name="action_share">Share</string>
+    <string name="action_open">Open</string>
+    <string name="chooser_open_file">Open %1$s</string>
+    <string name="chooser_share_file">Share %1$s</string>
+
+    <!-- Info Screen -->
+    <string name="personal_info_title">Developer Information</string>
+    <string name="developer_label">Developer</string>
+    <string name="website_label">Website</string>
+    <string name="email_label">Email</string>
+    <string name="donate_label">Donate</string>
+    <string name="donate_button">Donate (PayPal)</string>
+    <string name="rate_app_button">Rate 5 ⭐ on Play Store</string>
+    <string name="find_me_on">Find me on:</string>
 </resources>

@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -54,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import fr.antoinehory.ocraurebesh.R
 import fr.antoinehory.ocraurebesh.domain.ScanRecord
 import fr.antoinehory.ocraurebesh.ui.components.HudIcons
 import fr.antoinehory.ocraurebesh.ui.theme.HudAmber
@@ -117,7 +119,7 @@ fun ScanHistorySheet(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Historique",
+                    text = stringResource(R.string.history_title),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = HudTextPrimary,
@@ -130,7 +132,7 @@ fun ScanHistorySheet(
                     ) {
                         Icon(
                             imageVector = HudIcons.Delete,
-                            contentDescription = "Tout effacer",
+                            contentDescription = stringResource(R.string.history_clear_all),
                             tint = HudCoral,
                         )
                     }
@@ -145,12 +147,12 @@ fun ScanHistorySheet(
                 FilterChip(
                     selected = !showFavoritesOnly,
                     onClick = { onToggleFavoritesFilter(false) },
-                    label = { Text("Tous") },
+                    label = { Text(stringResource(R.string.history_filter_all)) },
                 )
                 FilterChip(
                     selected = showFavoritesOnly,
                     onClick = { onToggleFavoritesFilter(true) },
-                    label = { Text("Favoris") },
+                    label = { Text(stringResource(R.string.history_filter_favorites)) },
                     leadingIcon = {
                         Icon(
                             imageVector = if (showFavoritesOnly) HudIcons.StarFilled else HudIcons.StarBorder,
@@ -171,9 +173,12 @@ fun ScanHistorySheet(
                 if (confirmation != null) {
                     val promptText = when (confirmation) {
                         HistoryDeleteConfirmation.ClearAll ->
-                            "Tout l'historique va être supprimé. Confirmer ?"
+                            stringResource(R.string.history_confirm_clear_all)
                         is HistoryDeleteConfirmation.SingleItem ->
-                            "Supprimer « ${confirmation.record.translatedText} » ?"
+                            stringResource(
+                                R.string.history_confirm_delete_item,
+                                confirmation.record.translatedText,
+                            )
                     }
 
                     Surface(
@@ -215,7 +220,7 @@ fun ScanHistorySheet(
                                     border = BorderStroke(1.dp, HudSubtleBorder),
                                 ) {
                                     Text(
-                                        text = "Annuler",
+                                        text = stringResource(R.string.cancel),
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.SemiBold,
                                         color = HudTextSecondary,
@@ -239,7 +244,7 @@ fun ScanHistorySheet(
                                     border = BorderStroke(1.dp, HudCoral),
                                 ) {
                                     Text(
-                                        text = "OK",
+                                        text = stringResource(R.string.confirm_ok),
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = HudCoral,
@@ -257,9 +262,9 @@ fun ScanHistorySheet(
             if (records.isEmpty()) {
                 Text(
                     text = if (showFavoritesOnly) {
-                        "Aucun favori enregistré."
+                        stringResource(R.string.history_empty_favorites)
                     } else {
-                        "Aucune traduction enregistrée."
+                        stringResource(R.string.history_empty_all)
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = HudTextSecondary,
@@ -351,25 +356,25 @@ private fun ScanHistoryItemCard(
                 ) {
                     CompactHistoryActionButton(
                         icon = HudIcons.Edit,
-                        contentDescription = "Modifier dans Studio Aurebesh",
+                        contentDescription = stringResource(R.string.cd_edit_in_studio),
                         tint = HudCyan,
                         onClick = onEditInStudio,
                     )
                     CompactHistoryActionButton(
                         icon = HudIcons.Copy,
-                        contentDescription = "Copier",
+                        contentDescription = stringResource(R.string.cd_copy),
                         tint = HudCyan,
                         onClick = onCopy,
                     )
                     CompactHistoryActionButton(
                         icon = if (record.isFavorite) HudIcons.StarFilled else HudIcons.StarBorder,
-                        contentDescription = "Favori",
+                        contentDescription = stringResource(R.string.cd_favorite),
                         tint = if (record.isFavorite) HudAmber else HudTextSecondary,
                         onClick = onToggleFavorite,
                     )
                     CompactHistoryActionButton(
                         icon = HudIcons.Delete,
-                        contentDescription = "Supprimer",
+                        contentDescription = stringResource(R.string.cd_delete),
                         tint = HudTextSecondary,
                         onClick = onDelete,
                     )
