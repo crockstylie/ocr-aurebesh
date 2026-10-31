@@ -10,3 +10,4 @@ local.properties
 /.idea/
 /tools/tessdata-trainer/output/
 
+/app/release/
