@@ -3,6 +3,11 @@ package fr.antoinehory.ocraurebesh.ui.scanner
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,6 +32,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -36,14 +42,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -76,6 +88,7 @@ import fr.antoinehory.ocraurebesh.ui.theme.HudSubtleBorder
 import fr.antoinehory.ocraurebesh.ui.theme.HudTextPrimary
 import fr.antoinehory.ocraurebesh.ui.theme.HudTextSecondary
 import fr.antoinehory.ocraurebesh.ui.theme.OCRAurebeshTheme
+import kotlin.math.roundToInt
 
 /**
  * Route stateful reliant [ScannerViewModel], la permission caméra et [ScannerScreen].
@@ -152,6 +165,41 @@ fun ScannerScreen(
         }
     }
 
+    val density = LocalDensity.current.density
+    var overlayPositionInRoot by remember { mutableStateOf(Offset.Zero) }
+    var overlaySize by remember { mutableStateOf(Size.Zero) }
+    var rootSize by remember { mutableStateOf(Size.Zero) }
+
+    val onCropCommitted = remember(uiState.frozenFrameBitmap, uiState.cropRect, overlayPositionInRoot, overlaySize, rootSize, density) {
+        {
+            val bitmap = uiState.frozenFrameBitmap
+            if (bitmap != null && !bitmap.isRecycled && overlaySize.width > 0f && overlaySize.height > 0f && rootSize.width > 0f && rootSize.height > 0f) {
+                val crop = uiState.cropRect
+                val insetPx = 4f * density
+                val spanW = (overlaySize.width - insetPx * 2f).coerceAtLeast(1f)
+                val spanH = (overlaySize.height - insetPx * 2f).coerceAtLeast(1f)
+
+                val boxLeftInOverlay = insetPx + spanW * crop.left
+                val boxTopInOverlay = insetPx + spanH * crop.top
+                val boxWidthInOverlay = spanW * crop.width
+                val boxHeightInOverlay = spanH * crop.height
+
+                val boxLeftInRoot = overlayPositionInRoot.x + boxLeftInOverlay
+                val boxTopInRoot = overlayPositionInRoot.y + boxTopInOverlay
+
+                val scaleX = bitmap.width.toFloat() / rootSize.width
+                val scaleY = bitmap.height.toFloat() / rootSize.height
+
+                val bmpX = (boxLeftInRoot * scaleX).roundToInt().coerceIn(0, bitmap.width - 1)
+                val bmpY = (boxTopInRoot * scaleY).roundToInt().coerceIn(0, bitmap.height - 1)
+                val bmpW = (boxWidthInOverlay * scaleX).roundToInt().coerceIn(1, bitmap.width - bmpX)
+                val bmpH = (boxHeightInOverlay * scaleY).roundToInt().coerceIn(1, bitmap.height - bmpY)
+
+                onEvent(ScannerUiEvent.AnalyzeCrop(android.graphics.Rect(bmpX, bmpY, bmpX + bmpW, bmpY + bmpH)))
+            }
+        }
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -160,9 +208,16 @@ fun ScannerScreen(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(Unit) {
+                .onGloballyPositioned { coords ->
+                    rootSize = Size(coords.size.width.toFloat(), coords.size.height.toFloat())
+                }
+                .pointerInput(uiState.isPaused) {
                     detectTapGestures(
-                        onTap = { onEvent(ScannerUiEvent.TogglePause) }
+                        onTap = {
+                            if (!uiState.isPaused) {
+                                onEvent(ScannerUiEvent.TogglePause)
+                            }
+                        }
                     )
                 }
         ) {
@@ -179,6 +234,11 @@ fun ScannerScreen(
                     onCopyText = onCopyText,
                     onOpenGenerator = { onOpenGenerator(uiState.recognizedText) },
                     onOpenInfo = onOpenInfo,
+                    onCropCommitted = onCropCommitted,
+                    onOverlayPositioned = { pos, sz ->
+                        overlayPositionInRoot = pos
+                        overlaySize = sz
+                    },
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
@@ -192,6 +252,11 @@ fun ScannerScreen(
                     onCopyText = onCopyText,
                     onOpenGenerator = { onOpenGenerator(uiState.recognizedText) },
                     onOpenInfo = onOpenInfo,
+                    onCropCommitted = onCropCommitted,
+                    onOverlayPositioned = { pos, sz ->
+                        overlayPositionInRoot = pos
+                        overlaySize = sz
+                    },
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
@@ -248,11 +313,13 @@ private fun ScannerPortraitLayout(
     onCopyText: (String) -> Unit,
     onOpenGenerator: () -> Unit,
     onOpenInfo: () -> Unit,
+    onCropCommitted: () -> Unit,
+    onOverlayPositioned: (Offset, Size) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         ScannerTopHudBar(
             isFlashAvailable = uiState.isFlashAvailable,
@@ -267,21 +334,29 @@ private fun ScannerPortraitLayout(
         ScannerOverlay(
             isPaused = uiState.isPaused,
             hasRecognizedText = uiState.recognizedText.isNotEmpty(),
+            cropRect = uiState.cropRect,
+            onCropChanged = { onEvent(ScannerUiEvent.OnCropChanged(it)) },
+            onCropCommitted = onCropCommitted,
+            onOverlayPositionedInRoot = onOverlayPositioned,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
         )
 
-        TranslationHudDock(
-            recognizedText = uiState.recognizedText,
+        ScannerContextualToolbar(
             isPaused = uiState.isPaused,
-            onCopyScan = {
-                if (uiState.recognizedText.isNotEmpty()) {
-                    onCopyText(uiState.recognizedText)
-                }
-            },
+            hasRecognizedText = uiState.recognizedText.isNotEmpty(),
+            isAnalyzingCrop = uiState.isAnalyzingCrop,
+            onResumeScan = { onEvent(ScannerUiEvent.ResumeScanning) },
+            onAnalyzeCrop = onCropCommitted,
+            onCopyScan = { onCopyText(uiState.recognizedText) },
             onSaveScan = { onEvent(ScannerUiEvent.SaveCurrentScan) },
             onClearScan = { onEvent(ScannerUiEvent.ClearCurrentScan) },
+        )
+
+        TranslationTextCard(
+            recognizedText = uiState.recognizedText,
+            isPaused = uiState.isPaused,
         )
     }
 }
@@ -289,7 +364,7 @@ private fun ScannerPortraitLayout(
 /**
  * Mise en page Paysage :
  * - À gauche (`weight(1f)`) : grand viseur caméra totalement dégagé.
- * - À droite (`268.dp`) : colonne latérale regroupant les boutons d'action ronds et la carte de texte traduit.
+ * - À droite (`268.dp`) : colonne latérale regroupant les boutons d'action du haut, la barre contextuelle et la carte de texte traduit.
  */
 @Composable
 private fun ScannerLandscapeLayout(
@@ -298,6 +373,8 @@ private fun ScannerLandscapeLayout(
     onCopyText: (String) -> Unit,
     onOpenGenerator: () -> Unit,
     onOpenInfo: () -> Unit,
+    onCropCommitted: () -> Unit,
+    onOverlayPositioned: (Offset, Size) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -314,6 +391,10 @@ private fun ScannerLandscapeLayout(
             ScannerOverlay(
                 isPaused = uiState.isPaused,
                 hasRecognizedText = uiState.recognizedText.isNotEmpty(),
+                cropRect = uiState.cropRect,
+                onCropChanged = { onEvent(ScannerUiEvent.OnCropChanged(it)) },
+                onCropCommitted = onCropCommitted,
+                onOverlayPositionedInRoot = onOverlayPositioned,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -325,123 +406,34 @@ private fun ScannerLandscapeLayout(
                 .fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                HudCircleIconButton(
-                    icon = HudIcons.Info,
-                    contentDescription = stringResource(R.string.cd_info),
-                    tint = HudTextPrimary,
-                    onClick = onOpenInfo,
-                )
+            ScannerTopHudBar(
+                isFlashAvailable = uiState.isFlashAvailable,
+                isTorchEnabled = uiState.isTorchEnabled,
+                historyCount = uiState.historyRecords.size,
+                onOpenInfo = onOpenInfo,
+                onToggleTorch = { onEvent(ScannerUiEvent.ToggleTorch) },
+                onOpenGenerator = onOpenGenerator,
+                onOpenHistory = { onEvent(ScannerUiEvent.SetHistorySheetVisible(true)) },
+            )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HudCircleIconButton(
-                        icon = HudIcons.Edit,
-                        contentDescription = stringResource(R.string.cd_studio_aurebesh),
-                        tint = HudCyan,
-                        onClick = onOpenGenerator,
-                    )
+            ScannerContextualToolbar(
+                isPaused = uiState.isPaused,
+                hasRecognizedText = uiState.recognizedText.isNotEmpty(),
+                isAnalyzingCrop = uiState.isAnalyzingCrop,
+                onResumeScan = { onEvent(ScannerUiEvent.ResumeScanning) },
+                onAnalyzeCrop = onCropCommitted,
+                onCopyScan = { onCopyText(uiState.recognizedText) },
+                onSaveScan = { onEvent(ScannerUiEvent.SaveCurrentScan) },
+                onClearScan = { onEvent(ScannerUiEvent.ClearCurrentScan) },
+            )
 
-                    if (uiState.isFlashAvailable) {
-                        HudCircleIconButton(
-                            icon = if (uiState.isTorchEnabled) HudIcons.FlashOn else HudIcons.FlashOff,
-                            contentDescription = stringResource(R.string.cd_torch),
-                            isActive = uiState.isTorchEnabled,
-                            activeColor = HudAmber,
-                            activeBgColor = HudAmberDim,
-                            onClick = { onEvent(ScannerUiEvent.ToggleTorch) },
-                        )
-                    }
-
-                    HudHistoryButton(
-                        historyCount = uiState.historyRecords.size,
-                        onClick = { onEvent(ScannerUiEvent.SetHistorySheetVisible(true)) },
-                    )
-                }
-            }
-
-            // Carte latérale contenant le texte reconnu et la barre d'actions en bas
-            val hasText = uiState.recognizedText.isNotEmpty()
-            val scrollState = rememberScrollState()
-
-            Surface(
+            TranslationTextCard(
+                recognizedText = uiState.recognizedText,
+                isPaused = uiState.isPaused,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                color = HudGlassSurface,
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = when {
-                        uiState.isPaused -> HudAmber.copy(alpha = 0.55f)
-                        hasText -> HudGlassBorder
-                        else -> HudSubtleBorder
-                    },
-                ),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .verticalScroll(scrollState),
-                        contentAlignment = if (hasText) Alignment.TopStart else Alignment.Center,
-                    ) {
-                        Text(
-                            text = if (hasText) {
-                                uiState.recognizedText
-                            } else {
-                                stringResource(R.string.scanner_placeholder)
-                            },
-                            style = if (hasText) {
-                                MaterialTheme.typography.titleMedium
-                            } else {
-                                MaterialTheme.typography.bodyMedium
-                            },
-                            fontFamily = if (hasText) FontFamily.Monospace else FontFamily.Default,
-                            fontWeight = if (hasText) FontWeight.Bold else FontWeight.Normal,
-                            color = if (hasText) HudTextPrimary else HudTextSecondary,
-                        )
-                    }
-
-                    if (hasText) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 10.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            HudCircleIconButton(
-                                icon = HudIcons.Copy,
-                                contentDescription = stringResource(R.string.cd_copy),
-                                tint = HudCyan,
-                                onClick = { onCopyText(uiState.recognizedText) },
-                            )
-                            HudCircleIconButton(
-                                icon = HudIcons.BookmarkAdd,
-                                contentDescription = stringResource(R.string.cd_save),
-                                tint = HudEmerald,
-                                onClick = { onEvent(ScannerUiEvent.SaveCurrentScan) },
-                            )
-                            HudCircleIconButton(
-                                icon = HudIcons.Close,
-                                contentDescription = stringResource(R.string.cd_clear),
-                                tint = HudTextSecondary,
-                                onClick = { onEvent(ScannerUiEvent.ClearCurrentScan) },
-                            )
-                        }
-                    }
-                }
-            }
+            )
         }
     }
 }
@@ -500,17 +492,110 @@ private fun ScannerTopHudBar(
 }
 
 /**
- * Bandeau inférieur ("Dock") épuré en mode Portrait :
- * - Affiche le texte traduit et les icônes d'action (Copier, Sauvegarder, Effacer).
- * - L'état figé est reflété par la bordure ambrée (et les coins du viseur), sans bouton Play/Pause.
+ * Barre d'outils contextuelle flottante située juste au-dessus du bloc de texte traduit.
+ * Évite toute redondance et adapte ses boutons à l'état du scan :
+ * - En mode figé : bouton Play (tout à gauche pour reprendre le direct) + bouton Analyser.
+ * - Quand du texte est reconnu : boutons Copier, Sauvegarder, Effacer (Croix).
+ * - Quand aucun texte n'est reconnu et que le scan est en direct : masquée pour un minimalisme maximal.
  */
 @Composable
-private fun TranslationHudDock(
-    recognizedText: String,
+private fun ScannerContextualToolbar(
     isPaused: Boolean,
+    hasRecognizedText: Boolean,
+    isAnalyzingCrop: Boolean,
+    onResumeScan: () -> Unit,
+    onAnalyzeCrop: () -> Unit,
     onCopyScan: () -> Unit,
     onSaveScan: () -> Unit,
     onClearScan: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val hasActions = isPaused || hasRecognizedText
+    AnimatedVisibility(
+        visible = hasActions,
+        enter = fadeIn() + expandVertically(),
+        exit = fadeOut() + shrinkVertically(),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = HudGlassSurface,
+            border = BorderStroke(
+                width = 1.dp,
+                color = if (isPaused) HudAmber.copy(alpha = 0.55f) else HudGlassBorder,
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Contrôles spécifiques au mode figé (Play tout à gauche + Analyser)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (isPaused) {
+                        HudCircleIconButton(
+                            icon = HudIcons.Play,
+                            contentDescription = stringResource(R.string.btn_resume_scan),
+                            tint = HudAmber,
+                            activeColor = HudAmber,
+                            activeBgColor = HudAmberDim,
+                            onClick = onResumeScan,
+                        )
+                        HudCircleIconButton(
+                            icon = HudIcons.Search,
+                            contentDescription = stringResource(R.string.btn_crop_reanalyze),
+                            tint = HudCyan,
+                            isLoading = isAnalyzingCrop,
+                            onClick = onAnalyzeCrop,
+                        )
+                    }
+                }
+
+                // Actions contextuelles sur le texte reconnu (Copier, Sauvegarder, Croix)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (hasRecognizedText) {
+                        HudCircleIconButton(
+                            icon = HudIcons.Copy,
+                            contentDescription = stringResource(R.string.cd_copy),
+                            tint = HudCyan,
+                            onClick = onCopyScan,
+                        )
+                        HudCircleIconButton(
+                            icon = HudIcons.BookmarkAdd,
+                            contentDescription = stringResource(R.string.cd_save),
+                            tint = HudEmerald,
+                            onClick = onSaveScan,
+                        )
+                        HudCircleIconButton(
+                            icon = HudIcons.Close,
+                            contentDescription = stringResource(R.string.cd_clear),
+                            tint = HudTextSecondary,
+                            onClick = onClearScan,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Carte d'affichage du texte traduit (ou placeholder quand rien n'est reconnu).
+ * Totalement épurée : ne contient plus aucun bouton de contrôle (ceux-ci sont dans [ScannerContextualToolbar]).
+ */
+@Composable
+private fun TranslationTextCard(
+    recognizedText: String,
+    isPaused: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val hasText = recognizedText.isNotEmpty()
@@ -518,7 +603,7 @@ private fun TranslationHudDock(
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(22.dp),
         color = HudGlassSurface,
         border = BorderStroke(
             width = 1.dp,
@@ -543,58 +628,27 @@ private fun TranslationHudDock(
                 )
             }
         } else {
-            Column(
+            val isDenseMultiLine = recognizedText.count { it == '\n' } >= 2
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                    .heightIn(min = 28.dp, max = if (isDenseMultiLine) 160.dp else 90.dp)
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
+                    .verticalScroll(scrollState),
+                contentAlignment = Alignment.CenterStart,
             ) {
-                val isDenseMultiLine = recognizedText.count { it == '\n' } >= 2
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 28.dp, max = if (isDenseMultiLine) 180.dp else 96.dp)
-                        .verticalScroll(scrollState),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    Text(
-                        text = recognizedText,
-                        style = if (isDenseMultiLine) {
-                            MaterialTheme.typography.bodyMedium
-                        } else {
-                            MaterialTheme.typography.titleMedium
-                        },
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = HudTextPrimary,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-
-                Row(
+                Text(
+                    text = recognizedText,
+                    style = if (isDenseMultiLine) {
+                        MaterialTheme.typography.bodyMedium
+                    } else {
+                        MaterialTheme.typography.titleMedium
+                    },
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = HudTextPrimary,
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    HudCircleIconButton(
-                        icon = HudIcons.Copy,
-                        contentDescription = stringResource(R.string.cd_copy),
-                        tint = HudCyan,
-                        onClick = onCopyScan,
-                    )
-                    HudCircleIconButton(
-                        icon = HudIcons.BookmarkAdd,
-                        contentDescription = stringResource(R.string.cd_save),
-                        tint = HudEmerald,
-                        onClick = onSaveScan,
-                    )
-                    HudCircleIconButton(
-                        icon = HudIcons.Close,
-                        contentDescription = stringResource(R.string.cd_clear),
-                        tint = HudTextSecondary,
-                        onClick = onClearScan,
-                    )
-                }
+                )
             }
         }
     }
@@ -610,6 +664,7 @@ private fun HudCircleIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     isActive: Boolean = false,
+    isLoading: Boolean = false,
     tint: Color = HudTextPrimary,
     activeColor: Color = HudCyan,
     activeBgColor: Color = HudCyanDim,
@@ -624,19 +679,27 @@ private fun HudCircleIconButton(
             .clip(CircleShape)
             .background(color = bgColor, shape = CircleShape)
             .border(width = 1.dp, color = borderColor, shape = CircleShape)
-            .clickable(onClick = onClick)
+            .clickable(enabled = !isLoading, onClick = onClick)
             .semantics(mergeDescendants = true) {
                 this.contentDescription = contentDescription
                 this.role = Role.Button
             },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = iconTint,
-            modifier = Modifier.size(20.dp),
-        )
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+                color = iconTint,
+            )
+        } else {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
 

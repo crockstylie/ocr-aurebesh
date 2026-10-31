@@ -29,6 +29,9 @@
     <string name="cd_save">Sauvegarder</string>
     <string name="cd_clear">Effacer</string>
     <string name="cd_frozen_frame">Image caméra figée</string>
+    <string name="btn_resume_scan">Reprendre le direct</string>
+    <string name="btn_crop_reanalyze">Analyser ce cadre</string>
+    <string name="crop_hint">Ajustez le cadre sur le texte Aurebesh</string>
     <string name="camera_start_error">Impossible de démarrer la caméra</string>
     <string name="ocr_init_error">Erreur d\'initialisation OCR</string>
     <string name="msg_translation_saved">Traduction enregistrée dans l\'historique</string>

@@ -90,17 +90,18 @@ fr.antoinehory.ocraurebesh/
 | `app/src/main/java/fr/antoinehory/ocraurebesh/domain/ScanRecord.kt` | Modèle métier immuable (`@Immutable`) d'un scan Aurebesh | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/domain/OcrResult.kt` | Interface scellée (`Success`, `Empty`, `Error`) résultat d'une analyse OCR | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/TessDataManager.kt` | Extraction atomique de `aurebesh.traineddata` vers `filesDir/tesseract/tessdata/` | Actif |
-| `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/AutoImagePreprocessor.kt` | Découpage ROI, étirement d'histogramme 2%-98%, binarisation adaptative locale et détection auto de polarité | Actif |
-| `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/AurebeshOcrEngine.kt` | Interface `OcrRecognizer` et wrapper thread-safe (`Mutex`) de `TessBaseAPI` avec double-passe transparente | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/AutoImagePreprocessor.kt` | Découpage ROI, étirement d'histogramme, binarisation adaptative, canal chaud/froid `(R+G)/2 - B` et détection auto de polarité | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/TextLineFilter.kt` | Filtre par composantes connexes et fermeture verticale isolant les chaînes de glyphes alignés | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ocr/AurebeshOcrEngine.kt` | Interface `OcrRecognizer` et wrapper thread-safe (`Mutex`) de `TessBaseAPI` avec double-passe et analyse prioritaire des lignes | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/camera/AurebeshImageAnalyzer.kt` | `ImageAnalysis.Analyzer` extrayant le ROI avec fermeture garantie de l'`ImageProxy` (`use {}`) et recyclage `Bitmap` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/camera/CameraPreview.kt` | Composable CameraX (`PreviewView` + `ImageAnalysis` `STRATEGY_KEEP_ONLY_LATEST` + Torche + Gel image) | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/CameraPermissionGate.kt` | Garde-barrière Accompanist Permissions (`CAMERA`) avec gestion rationale et refus permanent | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/HudIcons.kt` | Icônes vectorielles légères pour les contrôles HUD et le Studio Aurebesh | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/HudSnackbar.kt` | Hôte de notification HUD sombre positionné en haut d'écran (ne masque jamais le bas) | Actif |
-| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/ScannerOverlay.kt` | Overlay du viseur HUD dessiné avec `Modifier.drawWithCache` | Actif |
-| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerUiState.kt` | `ScannerUiState` et `ScannerUiEvent` (pattern UDF) | Actif |
-| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerViewModel.kt` | `ViewModel` orchestrant l'OCR, la caméra et l'historique Room | Actif |
-| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerScreen.kt` | `ScannerRoute` et `ScannerScreen` Edge-to-Edge adaptatif (Portrait + Paysage) avec accès au Studio et à la page Info | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/components/ScannerOverlay.kt` | Viseur HUD épuré : 4 coins, lame de sabre laser (en direct) et cadre de recadrage interactif (en figé) | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerUiState.kt` | `ScannerUiState`, `NormalizedCropRect` et `ScannerUiEvent` (pattern UDF) | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerViewModel.kt` | `ViewModel` orchestrant l'OCR, la caméra, le recadrage manuel et l'historique Room | Actif |
+| `app/src/main/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerScreen.kt` | `ScannerScreen` Edge-to-Edge adaptatif avec `ScannerContextualToolbar` et `TranslationTextCard` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/generator/AurebeshGeneratorActivity.kt` | Activité dédiée du Studio / Générateur Aurebesh | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/generator/AurebeshGeneratorModels.kt` | Options de 8 polices Aurebesh, alignement, couleurs et formats d'export | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/generator/AurebeshGeneratorScreen.kt` | Écran Compose épuré avec menu Style/Couleurs rétractable, sauvegarde/accès Historique, damier DAO et Color Picker HSV | Actif |
@@ -115,7 +116,8 @@ fr.antoinehory.ocraurebesh/
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/theme/Color.kt` | Palette de couleurs Material 3 | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/theme/Theme.kt` | `OCRAurebeshTheme` | Actif |
 | `app/src/main/java/fr/antoinehory/ocraurebesh/ui/theme/Type.kt` | Typographies Material 3 | Actif |
-| `app/src/test/java/fr/antoinehory/ocraurebesh/ocr/AutoImagePreprocessorTest.kt` | Tests unitaires JVM d'Otsu, de l'étirement d'histogramme et de la détection auto de polarité | Actif |
+| `app/src/test/java/fr/antoinehory/ocraurebesh/ocr/AutoImagePreprocessorTest.kt` | Tests unitaires JVM d'Otsu, de l'étirement d'histogramme, du canal chaud/froid et de la polarité auto | Actif |
+| `app/src/test/java/fr/antoinehory/ocraurebesh/ocr/TextLineFilterTest.kt` | Tests unitaires JVM de l'extraction de lignes par composantes connexes et fermeture verticale | Actif |
 | `app/src/test/java/fr/antoinehory/ocraurebesh/data/ScanHistoryMapperAndRepositoryTest.kt` | Tests unitaires des mappers `toDomain`/`toEntity` et de `ScanHistoryRepository` | Actif |
 | `app/src/test/java/fr/antoinehory/ocraurebesh/ui/scanner/ScannerViewModelTest.kt` | Tests unitaires de `ScannerViewModel` avec Fakes (`FakeOcrRecognizer`, `FakeScanHistoryDao`) | Actif |
 | `app/src/androidTest/java/fr/antoinehory/ocraurebesh/data/local/ScanHistoryDaoInstrumentedTest.kt` | Tests instrumentés SQLite en mémoire de `ScanHistoryDao` | Actif |

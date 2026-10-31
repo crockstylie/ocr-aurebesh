@@ -74,9 +74,39 @@ class AurebeshOcrEngine(
             val preprocessed = AutoImagePreprocessor.preprocessForOcr(roiBitmap)
 
             try {
-                // Passe 1 : sur la polarité détectée automatiquement (si la densité de traits est plausible)
+                // 1. Passes prioritaires sur les lignes de texte candidates isolées et nettoyées
+                var bestCandidatePass = PassResult.EMPTY
+                var bestCandidateInverted = false
+
+                for (candidate in preprocessed.lineCandidates) {
+                    val psm = if (candidate.bitmap.width >= candidate.bitmap.height * 1.5f) {
+                        TessBaseAPI.PageSegMode.PSM_SINGLE_LINE
+                    } else {
+                        TessBaseAPI.PageSegMode.PSM_SINGLE_BLOCK
+                    }
+                    val pass = runSinglePass(api, candidate.bitmap, psm)
+                    if (pass.qualityScore > bestCandidatePass.qualityScore) {
+                        bestCandidatePass = pass
+                        bestCandidateInverted = candidate.wasInverted
+                    }
+                }
+
+                // Si un candidat isolé présente un texte d'au moins 3 caractères et une très bonne confiance,
+                // on le valide immédiatement (détection quasi certaine sans bruit de décor).
+                if (
+                    bestCandidatePass.nonSpaceLength >= 3 &&
+                    bestCandidatePass.confidence >= HIGH_CONFIDENCE_SHORT_CIRCUIT
+                ) {
+                    return@withLock OcrResult.Success(
+                        text = bestCandidatePass.text,
+                        confidence = bestCandidatePass.confidence,
+                        wasInverted = bestCandidateInverted,
+                    )
+                }
+
+                // 2. Passes sur l'image entière (ROI complète) : utile pour les paragraphes denses
                 val primaryPass = if (preprocessed.primaryInkRatio in MIN_INK_RATIO..MAX_INK_RATIO) {
-                    runSinglePass(api, preprocessed.primaryBitmap)
+                    runSinglePass(api, preprocessed.primaryBitmap, TessBaseAPI.PageSegMode.PSM_SINGLE_BLOCK)
                 } else {
                     PassResult.EMPTY
                 }
@@ -84,7 +114,8 @@ class AurebeshOcrEngine(
                 // Court-circuit de la Passe 2 si la Passe 1 est déjà très fiable
                 if (
                     primaryPass.nonSpaceLength >= 3 &&
-                    primaryPass.confidence >= HIGH_CONFIDENCE_SHORT_CIRCUIT
+                    primaryPass.confidence >= HIGH_CONFIDENCE_SHORT_CIRCUIT &&
+                    primaryPass.qualityScore >= bestCandidatePass.qualityScore
                 ) {
                     return@withLock OcrResult.Success(
                         text = primaryPass.text,
@@ -93,22 +124,25 @@ class AurebeshOcrEngine(
                     )
                 }
 
-                // Passe 2 : polarité opposée (si sa densité de traits est plausible)
+                // Passe 3 : polarité opposée de la ROI complète
                 val invertedPass = if (preprocessed.invertedInkRatio in MIN_INK_RATIO..MAX_INK_RATIO) {
-                    runSinglePass(api, preprocessed.invertedBitmap)
+                    runSinglePass(api, preprocessed.invertedBitmap, TessBaseAPI.PageSegMode.PSM_SINGLE_BLOCK)
                 } else {
                     PassResult.EMPTY
                 }
 
-                val bestPass: PassResult
-                val wasInvertedUsed: Boolean
+                // Choix de la meilleure passe parmi : ligne candidate vs ROI primaire vs ROI inversée
+                var bestPass = bestCandidatePass
+                var wasInvertedUsed = bestCandidateInverted
 
-                if (invertedPass.qualityScore > primaryPass.qualityScore) {
-                    bestPass = invertedPass
-                    wasInvertedUsed = !preprocessed.wasAutoInverted
-                } else {
+                if (primaryPass.qualityScore > bestPass.qualityScore) {
                     bestPass = primaryPass
                     wasInvertedUsed = preprocessed.wasAutoInverted
+                }
+
+                if (invertedPass.qualityScore > bestPass.qualityScore) {
+                    bestPass = invertedPass
+                    wasInvertedUsed = !preprocessed.wasAutoInverted
                 }
 
                 val minRequiredConfidence = when {
@@ -134,8 +168,7 @@ class AurebeshOcrEngine(
                     cause = e,
                 )
             } finally {
-                preprocessed.primaryBitmap.recycle()
-                preprocessed.invertedBitmap.recycle()
+                preprocessed.recycleAll()
             }
         }
     }
@@ -164,12 +197,19 @@ class AurebeshOcrEngine(
             }
             api.pageSegMode = TessBaseAPI.PageSegMode.PSM_SINGLE_BLOCK
             api.setVariable(TessBaseAPI.VAR_CHAR_WHITELIST, ALLOWED_CHARS)
+            api.setVariable("load_system_dawg", "0")
+            api.setVariable("load_freq_dawg", "0")
             tessBaseApi = api
             isInitialized = true
         }
     }
 
-    private fun runSinglePass(api: TessBaseAPI, bitmap: Bitmap): PassResult {
+    private fun runSinglePass(
+        api: TessBaseAPI,
+        bitmap: Bitmap,
+        pageSegMode: Int = TessBaseAPI.PageSegMode.PSM_SINGLE_BLOCK,
+    ): PassResult {
+        api.pageSegMode = pageSegMode
         api.setImage(bitmap)
         val rawText = api.utF8Text.orEmpty()
         val confidence = api.meanConfidence().coerceIn(0, 100)

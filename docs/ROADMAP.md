@@ -67,6 +67,18 @@ Légende : `[x]` Terminé | `[/]` En cours | `[ ]` À faire
 - [x] Écran d'informations personnelles (`InfoActivity` / `InfoScreen`) avec liens développeur, bouton de don PayPal et icônes de réseaux sociaux vectorielles
 - [x] Splash Screen HUD sur mesure (`androidx.core:core-splashscreen` + `ic_splash_logo.xml`) et icônes d'application adaptatives + mipmaps WebP haute définition (création originale 100 % libre de droits)
 
+## Phase 9 : Prétraitement Couleur Avancé, Effets HUD & Toolbar Contextuelle Modulaire
+- [x] Balayage visuel type « lame de sabre laser » discrète avec aura luminescente pendant le scan en direct
+- [x] Séparation couleur par canal opposé chaud/froid `(R+G)/2 - B` et extraction par composantes connexes (`TextLineFilter`) pour les textes peints ou à luminance égale au fond (ex. lettres dorées sur fond bleu)
+- [x] Cadre de recadrage interactif au doigt en mode figé (`isPaused`) avec poignées d'angles/bords et ré-analyse automatique
+- [x] Épuration graphique maximale : suppression de tout texte explicatif ou indicatif superflu dans le viseur
+- [x] Nouvelle barre d'actions contextuelle modulaire (`ScannerContextualToolbar`) positionnée juste au-dessus de la carte de texte :
+  - Bouton `[Play]` tout à gauche et `[Analyser]` en mode figé pour reprendre le direct ou relancer l'OCR
+  - Boutons `[Copier]`, `[Sauvegarder]`, `[Effacer / Croix]` conditionnés à la présence effective de texte
+  - Masquage automatique de la barre d'outils quand aucun contrôle n'est requis
+  - Carte de texte traduit (`TranslationTextCard`) purement dédiée à la restitution du texte
+
+
 
 
 

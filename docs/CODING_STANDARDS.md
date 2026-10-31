@@ -39,6 +39,13 @@
     2. `ScannerScreen(uiState: ScannerUiState, onEvent: (ScannerUiEvent) -> Unit, modifier: Modifier = Modifier)` : Composable **stateless**, pur, facile à prévisualiser (`@Preview`) et à tester.
 - **Zéro réglage technique exposé à l'utilisateur** :
   - L'interface de scan doit rester épurée : ne pas exposer de sliders de seuillage ou de switch "texte clair / fond foncé". Toute l'adaptation d'image se fait automatiquement dans `AutoImagePreprocessor` et `AurebeshOcrEngine`.
+- **Standards UX / UI : Minimalisme Textuel & Cohérence Contextuelle** :
+  - **Moins de texte possible** : Ne pas afficher de phrases tutoriels ou explicatives superflues (ex. *"Ajustez le cadre..."*) lorsque les affordances visuelles (poignées d'angle, bordures HUD) suffisent à guider l'utilisateur.
+  - **Zéro redondance de contrôles** : Un contrôle n'a qu'un seul emplacement légitime. Ne jamais dupliquer un bouton entre le viseur et le dock inférieur.
+  - **Séparation stricte contenu / actions** : La carte de texte traduit affiche uniquement le texte ou le placeholder. Les boutons d'actions sont regroupés dans une barre contextuelle distincte (`ScannerContextualToolbar`), située immédiatement au-dessus.
+  - **Visibilité contextuelle des actions** :
+    - En direct : aucun bouton si rien n'est reconnu ; boutons `[Copier]`, `[Sauvegarder]`, `[Effacer]` dès qu'un texte est présent.
+    - En figé : `[Play]` tout à gauche et `[Analyser]` à côté ; les boutons de texte n'apparaissent à droite que si du texte est reconnu.
 - **Stabilité & Performance de Recomposition** :
   - Annoter les classes d'état avec `@Immutable` ou `@Stable` dès lors qu'elles contiennent des types que le compilateur Compose ne peut pas inférer comme stables.
   - Toujours fournir une `key` unique dans les `LazyColumn` (`items(items = historyList, key = { it.id })`).

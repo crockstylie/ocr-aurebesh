@@ -78,8 +78,29 @@ class ScannerViewModel(
                     state.copy(
                         isPaused = nextPaused,
                         frozenFrameBitmap = if (nextPaused) state.frozenFrameBitmap else null,
+                        cropRect = NormalizedCropRect(),
+                        isAnalyzingCrop = false,
                     )
                 }
+            }
+
+            ScannerUiEvent.ResumeScanning -> {
+                _uiState.update { state ->
+                    state.copy(
+                        isPaused = false,
+                        frozenFrameBitmap = null,
+                        cropRect = NormalizedCropRect(),
+                        isAnalyzingCrop = false,
+                    )
+                }
+            }
+
+            is ScannerUiEvent.OnCropChanged -> {
+                _uiState.update { it.copy(cropRect = event.crop) }
+            }
+
+            is ScannerUiEvent.AnalyzeCrop -> {
+                analyzeCropInBitmap(event.cropInBitmap)
             }
 
             is ScannerUiEvent.OnFrozenFrameCaptured -> {
@@ -191,6 +212,41 @@ class ScannerViewModel(
             } finally {
                 if (roiBitmap !== bitmap && !roiBitmap.isRecycled) {
                     roiBitmap.recycle()
+                }
+            }
+        }
+    }
+
+    /**
+     * Analyse un sous-rectangle spécifiquement recadré par l'utilisateur sur l'image figée.
+     */
+    private fun analyzeCropInBitmap(crop: android.graphics.Rect) {
+        val bitmap = _uiState.value.frozenFrameBitmap ?: return
+        if (!_uiState.value.isOcrReady || bitmap.isRecycled) return
+
+        viewModelScope.launch(Dispatchers.Default) {
+            _uiState.update { it.copy(isAnalyzingCrop = true) }
+            val cropX = crop.left.coerceIn(0, bitmap.width - 1)
+            val cropY = crop.top.coerceIn(0, bitmap.height - 1)
+            val cropW = crop.width().coerceIn(1, bitmap.width - cropX)
+            val cropH = crop.height().coerceIn(1, bitmap.height - cropY)
+
+            val cropped = runCatching {
+                Bitmap.createBitmap(bitmap, cropX, cropY, cropW, cropH)
+            }.getOrNull()
+
+            if (cropped == null) {
+                _uiState.update { it.copy(isAnalyzingCrop = false) }
+                return@launch
+            }
+
+            try {
+                val result = ocrEngine.recognize(cropped)
+                onOcrResult(result, isFromFrozenCapture = true)
+            } finally {
+                _uiState.update { it.copy(isAnalyzingCrop = false) }
+                if (cropped !== bitmap && !cropped.isRecycled) {
+                    cropped.recycle()
                 }
             }
         }

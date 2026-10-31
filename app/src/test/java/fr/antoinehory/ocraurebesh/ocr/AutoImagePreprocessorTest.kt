@@ -199,6 +199,48 @@ class AutoImagePreprocessorTest {
         assertEquals(0f, result.invertedInkRatio, 0.001f)
     }
 
+    @Test
+    fun `computeWarmCoolMasks separates warm gold text on cool blue background`() {
+        val width = 48
+        val height = 24
+        val total = width * height
+        val pixels = IntArray(total)
+
+        // Fond bleu froid (R=40, G=70, B=170)
+        val blueBg = (0xFF shl 24) or (40 shl 16) or (70 shl 8) or 170
+        // Texte doré chaud (R=215, G=175, B=45)
+        val goldFg = (0xFF shl 24) or (215 shl 16) or (175 shl 8) or 45
+
+        for (i in 0 until total) {
+            pixels[i] = blueBg
+        }
+
+        // Ligne de texte au centre (y=8..15, x=10..38)
+        for (y in 8..15) {
+            for (x in 10..38) {
+                pixels[y * width + x] = goldFg
+            }
+        }
+
+        val masks = AutoImagePreprocessor.computeWarmCoolMasks(pixels, width, height)
+
+        org.junit.Assert.assertNotNull(
+            "Le canal chaud/froid doit être activé lorsque la dynamique couleur est forte",
+            masks,
+        )
+        // Les pixels dorés doivent être marqués dans lightMask (canal chaud)
+        val centerIdx = 11 * width + 24
+        assertTrue(
+            "Le pixel doré au centre doit être détecté comme texte chaud",
+            masks!!.lightMask[centerIdx],
+        )
+        // Les pixels de fond bleu ne doivent pas être dans lightMask
+        assertFalse(
+            "Le fond bleu ne doit pas être considéré comme encre chaude",
+            masks.lightMask[2 * width + 2],
+        )
+    }
+
     private fun buildSyntheticRoi(
         width: Int,
         height: Int,

@@ -29,6 +29,9 @@
     <string name="cd_save">Guardar</string>
     <string name="cd_clear">Borrar</string>
     <string name="cd_frozen_frame">Imagen de cámara congelada</string>
+    <string name="btn_resume_scan">Reanudar escaneo</string>
+    <string name="btn_crop_reanalyze">Analizar selección</string>
+    <string name="crop_hint">Ajuste el marco sobre el texto Aurebesh</string>
     <string name="camera_start_error">No se pudo iniciar la cámara</string>
     <string name="ocr_init_error">Error de inicialización OCR</string>
     <string name="msg_translation_saved">Traducción guardada en el historial</string>

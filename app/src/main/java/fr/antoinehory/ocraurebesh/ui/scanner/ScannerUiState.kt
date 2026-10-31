@@ -23,14 +23,41 @@ data class ScannerUiState(
     val statusMessage: String? = null,
     val errorMessage: String? = null,
     val roiFraction: RoiRectFraction = RoiRectFraction(),
+    val cropRect: NormalizedCropRect = NormalizedCropRect(),
+    val isAnalyzingCrop: Boolean = false,
 )
+
+/**
+ * Coordonnées relatives normalisées (0f..1f) du cadre de recadrage interactif dans le viseur.
+ */
+data class NormalizedCropRect(
+    val left: Float = 0.05f,
+    val top: Float = 0.30f,
+    val right: Float = 0.95f,
+    val bottom: Float = 0.70f,
+) {
+    val width: Float get() = (right - left).coerceAtLeast(0.04f)
+    val height: Float get() = (bottom - top).coerceAtLeast(0.04f)
+
+    fun coerceValid(): NormalizedCropRect {
+        val minSpan = 0.06f
+        val clampedL = left.coerceIn(0f, 1f - minSpan)
+        val clampedT = top.coerceIn(0f, 1f - minSpan)
+        val clampedR = right.coerceIn(clampedL + minSpan, 1f)
+        val clampedB = bottom.coerceIn(clampedT + minSpan, 1f)
+        return NormalizedCropRect(clampedL, clampedT, clampedR, clampedB)
+    }
+}
 
 /**
  * Événements remontés par l'interface utilisateur vers [ScannerViewModel] (pattern UDF).
  */
 sealed interface ScannerUiEvent {
     data object TogglePause : ScannerUiEvent
+    data object ResumeScanning : ScannerUiEvent
     data class OnFrozenFrameCaptured(val bitmap: Bitmap) : ScannerUiEvent
+    data class OnCropChanged(val crop: NormalizedCropRect) : ScannerUiEvent
+    data class AnalyzeCrop(val cropInBitmap: android.graphics.Rect) : ScannerUiEvent
     data object ToggleTorch : ScannerUiEvent
     data class OnFlashAvailabilityChanged(val available: Boolean) : ScannerUiEvent
     data class OnCameraError(val message: String) : ScannerUiEvent

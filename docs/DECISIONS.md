@@ -87,6 +87,27 @@
   3. **Rehaussement `sharpenEdges5x5` & Binarisation Multi-Échelle (`AutoImagePreprocessor`)** : Application d'un filtre Unsharp Mask $5 \times 5$ (avec seuil de bruit) pour restaurer les bords flous, suivie d'un seuillage par Image Intégrale à double rayon (`smallRadius` pour les petits caractères et les contours évidés + `largeRadius` pour les traits pleins épais).
   4. **Préservation Multi-Lignes (`\n`) & Entraînement Docker Enrichi (`AurebeshOcrEngine` + `train_aurebesh.py`)** : Conservation des sauts de ligne dans `AurebeshOcrEngine` et ré-entraînement de `aurebesh.traineddata` (7 000 itérations sur `Regular`, `Canon AF`, `Bold`, `Condensed`) incluant 30 % de glyphes en mode contour (`stroke` et gradient morphologique `morph_edge`), du flou optique marqué (`GaussianBlur` + `UnsharpMask`) et des petites tailles (`20 px` à `54 px`).
 
+## ADR-010 : Minimalisme Textuel, Non-Redondance des Contrôles & Toolbar Contextuelle HUD
+- **Date** : 2026-10-31
+- **Contexte** : L'interface doit être épurée, intuitive sans phrases d'explications superflues, et exempte de contrôles redondants ou dispersés.
+- **Décision** :
+  1. **Minimalisme textuel strict** : Suppression des textes tutoriels ou indicatifs évidents (ex. *"Ajustez le cadre sur le texte Aurebesh"*). L'interface HUD tactile (poignées d'angle, bordures ajustables) est visuellement auto-explicative.
+  2. **Séparation de l'affichage du contenu et des actions** : La carte de texte traduit (`TranslationTextCard`) est dédiée uniquement à la restitution du texte (et au placeholder). Tous les boutons d'actions en sont extraits pour être logés dans un bloc distinct du même style visuel (`ScannerContextualToolbar`), situé immédiatement au-dessus.
+  3. **Modularité contextuelle stricte des boutons** :
+     - En mode direct (`isPaused == false`) :
+       - Si aucun texte n'est reconnu : la barre d'outils est totalement masquée.
+       - Dès qu'un texte est reconnu : la barre d'outils apparaît avec les actions `[Copier]`, `[Sauvegarder]` et `[Effacer / Croix]`.
+     - En mode figé (`isPaused == true`) :
+       - Le bouton `[Play / Reprendre le direct]` apparaît tout à gauche de la barre d'outils.
+       - Le bouton `[Analyser]` apparaît à côté de `[Play]`.
+       - Si du texte est reconnu : les boutons `[Copier]`, `[Sauvegarder]` et `[Effacer / Croix]` s'affichent à droite.
+       - Si rien n'est reconnu : les boutons `[Copier]`, `[Sauvegarder]` et `[Effacer]` sont masqués.
+  4. **Viseur caméra épuré (`ScannerOverlay`)** : Aucun bouton ni texte dans le viseur ; uniquement les 4 coins HUD, le balayage laser discret (en direct) et le cadre de recadrage interactif (en figé).
+- **Conséquences** :
+  - Zéro redondance de contrôles entre le viseur et le bandeau inférieur.
+  - Expérience utilisateur fluide et réactive avec des animations douces (`AnimatedVisibility`).
+
+
 
 
 

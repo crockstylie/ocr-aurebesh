@@ -29,6 +29,9 @@
     <string name="cd_save">Save</string>
     <string name="cd_clear">Clear</string>
     <string name="cd_frozen_frame">Frozen camera frame</string>
+    <string name="btn_resume_scan">Resume scan</string>
+    <string name="btn_crop_reanalyze">Analyze crop</string>
+    <string name="crop_hint">Adjust frame over Aurebesh text</string>
     <string name="camera_start_error">Unable to start camera</string>
     <string name="ocr_init_error">OCR initialization error</string>
     <string name="msg_translation_saved">Translation saved to history</string>
