@@ -219,13 +219,18 @@ class ScannerViewModel(
 
     /**
      * Analyse un sous-rectangle spécifiquement recadré par l'utilisateur sur l'image figée.
+     * On vide d'abord le texte reconnu pour forcer [onOcrResult] à accepter le nouveau résultat
+     * même si la zone recadrée contient moins de lignes que l'analyse précédente.
      */
     private fun analyzeCropInBitmap(crop: android.graphics.Rect) {
         val bitmap = _uiState.value.frozenFrameBitmap ?: return
         if (!_uiState.value.isOcrReady || bitmap.isRecycled) return
 
         viewModelScope.launch(Dispatchers.Default) {
-            _uiState.update { it.copy(isAnalyzingCrop = true) }
+            // Vider le texte avant l'analyse pour garantir que le résultat recadré
+            // (potentiellement moins de lignes) remplace toujours le texte précédent.
+            _uiState.update { it.copy(isAnalyzingCrop = true, recognizedText = "", confidence = 0) }
+
             val cropX = crop.left.coerceIn(0, bitmap.width - 1)
             val cropY = crop.top.coerceIn(0, bitmap.height - 1)
             val cropW = crop.width().coerceIn(1, bitmap.width - cropX)

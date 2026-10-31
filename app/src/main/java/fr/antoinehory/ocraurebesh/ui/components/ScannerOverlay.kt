@@ -7,10 +7,12 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,8 +25,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.dp
 import fr.antoinehory.ocraurebesh.ui.scanner.NormalizedCropRect
 import fr.antoinehory.ocraurebesh.ui.theme.HudAmber
@@ -39,9 +42,9 @@ import kotlin.math.abs
  *    - Animation de balayage vertical type "lame de sabre laser" discrète avec aura luminescente.
  * 2. En mode figé ([isPaused] == true) :
  *    - 4 repères d'angle ambrés.
- *    - Cadre de recadrage interactif avec poignées d'angle et de bordures ajustables au doigt.
+ *    - Cadre de recadrage interactif ultra réactif (suivi tactile immédiat via `awaitEachGesture`).
+ *    - Redessin optimisé en phase Draw (zéro recomposition, zéro lag, zéro temps de latence au relâchement).
  *    - Déclenchement automatique d'une analyse OCR sur la zone recadrée lors du relâchement.
- *    - Zéro texte superflu et zéro bouton redondant dans le viseur (centralisés dans la barre contextuelle).
  */
 @Composable
 fun ScannerOverlay(
@@ -50,7 +53,7 @@ fun ScannerOverlay(
     modifier: Modifier = Modifier,
     cropRect: NormalizedCropRect = NormalizedCropRect(),
     onCropChanged: (NormalizedCropRect) -> Unit = {},
-    onCropCommitted: () -> Unit = {},
+    onCropCommitted: (NormalizedCropRect) -> Unit = {},
     onOverlayPositionedInRoot: (Offset, Size) -> Unit = { _, _ -> },
 ) {
     val accentColor = when {
@@ -59,6 +62,7 @@ fun ScannerOverlay(
         else -> HudCyan
     }
 
+    // Animation sabre laser active uniquement en direct
     val infiniteTransition = rememberInfiniteTransition(label = "lightsaber_scan")
     val scanProgress by infiniteTransition.animateFloat(
         initialValue = 0.04f,
@@ -70,125 +74,136 @@ fun ScannerOverlay(
         label = "scan_progress",
     )
 
-    var activeCrop by remember(cropRect, isPaused) { mutableStateOf(cropRect) }
-    var currentDragTarget by remember { mutableStateOf(DragTarget.NONE) }
+    var activeCrop by remember { mutableStateOf(cropRect) }
 
-    BoxWithConstraints(
+    LaunchedEffect(isPaused, cropRect) {
+        if (isPaused) {
+            activeCrop = cropRect
+        }
+    }
+
+    Box(
         modifier = modifier
             .fillMaxSize()
             .onGloballyPositioned { coordinates ->
                 onOverlayPositionedInRoot(
-                    coordinates.positionInRoot(),
+                    coordinates.positionInWindow(),
                     Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat()),
                 )
             }
     ) {
-        val overlayWidthPx = constraints.maxWidth.toFloat()
-        val overlayHeightPx = constraints.maxHeight.toFloat()
-
         val gestureModifier = if (isPaused) {
-            Modifier.pointerInput(isPaused) {
-                detectDragGestures(
-                    onDragStart = { offset ->
-                        val insetPx = 4.dp.toPx()
-                        val left = insetPx
-                        val top = insetPx
-                        val right = (overlayWidthPx - insetPx).coerceAtLeast(left + 1f)
-                        val bottom = (overlayHeightPx - insetPx).coerceAtLeast(top + 1f)
-                        val spanW = right - left
-                        val spanH = bottom - top
+            Modifier.pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val width = size.width.toFloat()
+                    val height = size.height.toFloat()
 
-                        val bL = left + spanW * activeCrop.left
-                        val bT = top + spanH * activeCrop.top
-                        val bR = left + spanW * activeCrop.right
-                        val bB = top + spanH * activeCrop.bottom
+                    val insetPx = 4.dp.toPx()
+                    val left = insetPx
+                    val top = insetPx
+                    val right = (width - insetPx).coerceAtLeast(left + 1f)
+                    val bottom = (height - insetPx).coerceAtLeast(top + 1f)
+                    val spanW = (right - left).coerceAtLeast(1f)
+                    val spanH = (bottom - top).coerceAtLeast(1f)
 
-                        val handleRadius = 36.dp.toPx()
-                        val edgeTol = 24.dp.toPx()
+                    var current = activeCrop
+                    val bL = left + spanW * current.left
+                    val bT = top + spanH * current.top
+                    val bR = left + spanW * current.right
+                    val bB = top + spanH * current.bottom
 
-                        currentDragTarget = when {
-                            (offset - Offset(bL, bT)).getDistance() <= handleRadius -> DragTarget.TOP_LEFT
-                            (offset - Offset(bR, bT)).getDistance() <= handleRadius -> DragTarget.TOP_RIGHT
-                            (offset - Offset(bL, bB)).getDistance() <= handleRadius -> DragTarget.BOTTOM_LEFT
-                            (offset - Offset(bR, bB)).getDistance() <= handleRadius -> DragTarget.BOTTOM_RIGHT
-                            abs(offset.y - bT) <= edgeTol && offset.x in (bL - 10f)..(bR + 10f) -> DragTarget.TOP
-                            abs(offset.y - bB) <= edgeTol && offset.x in (bL - 10f)..(bR + 10f) -> DragTarget.BOTTOM
-                            abs(offset.x - bL) <= edgeTol && offset.y in (bT - 10f)..(bB + 10f) -> DragTarget.LEFT
-                            abs(offset.x - bR) <= edgeTol && offset.y in (bT - 10f)..(bB + 10f) -> DragTarget.RIGHT
-                            offset.x in bL..bR && offset.y in bT..bB -> DragTarget.CENTER
-                            else -> DragTarget.CENTER
+                    val handleRadius = 40.dp.toPx()
+                    val edgeTol = 28.dp.toPx()
+                    val offset = down.position
+
+                    val target = when {
+                        (offset - Offset(bL, bT)).getDistance() <= handleRadius -> DragTarget.TOP_LEFT
+                        (offset - Offset(bR, bT)).getDistance() <= handleRadius -> DragTarget.TOP_RIGHT
+                        (offset - Offset(bL, bB)).getDistance() <= handleRadius -> DragTarget.BOTTOM_LEFT
+                        (offset - Offset(bR, bB)).getDistance() <= handleRadius -> DragTarget.BOTTOM_RIGHT
+                        abs(offset.y - bT) <= edgeTol && offset.x in (bL - 12f)..(bR + 12f) -> DragTarget.TOP
+                        abs(offset.y - bB) <= edgeTol && offset.x in (bL - 12f)..(bR + 12f) -> DragTarget.BOTTOM
+                        abs(offset.x - bL) <= edgeTol && offset.y in (bT - 12f)..(bB + 12f) -> DragTarget.LEFT
+                        abs(offset.x - bR) <= edgeTol && offset.y in (bT - 12f)..(bB + 12f) -> DragTarget.RIGHT
+                        // Tap strictement à l'intérieur du cadre (hors bordures) : déplacement
+                        offset.x in (bL + edgeTol)..(bR - edgeTol) && offset.y in (bT + edgeTol)..(bB - edgeTol) -> DragTarget.CENTER
+                        // Tap en dehors du cadre ou sur la bordure sans poignée : ignore
+                        else -> DragTarget.NONE
+                    }
+
+                    down.consume()
+
+                    val minSpan = 0.06f
+                    val pointerId = down.id
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+                        if (!change.pressed) {
+                            change.consume()
+                            break
                         }
-                    },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                        val insetPx = 4.dp.toPx()
-                        val left = insetPx
-                        val top = insetPx
-                        val right = (overlayWidthPx - insetPx).coerceAtLeast(left + 1f)
-                        val bottom = (overlayHeightPx - insetPx).coerceAtLeast(top + 1f)
-                        val spanW = (right - left).coerceAtLeast(1f)
-                        val spanH = (bottom - top).coerceAtLeast(1f)
 
-                        val dx = dragAmount.x / spanW
-                        val dy = dragAmount.y / spanH
-                        val minSpan = 0.06f
+                        val dragAmount = change.positionChange()
+                        if (dragAmount != Offset.Zero) {
+                            change.consume()
+                            val dx = dragAmount.x / spanW
+                            val dy = dragAmount.y / spanH
 
-                        activeCrop = when (currentDragTarget) {
-                            DragTarget.TOP_LEFT -> {
-                                val nL = (activeCrop.left + dx).coerceIn(0.01f, activeCrop.right - minSpan)
-                                val nT = (activeCrop.top + dy).coerceIn(0.01f, activeCrop.bottom - minSpan)
-                                activeCrop.copy(left = nL, top = nT)
+                            current = when (target) {
+                                DragTarget.TOP_LEFT -> {
+                                    val nL = (current.left + dx).coerceIn(0.01f, current.right - minSpan)
+                                    val nT = (current.top + dy).coerceIn(0.01f, current.bottom - minSpan)
+                                    current.copy(left = nL, top = nT)
+                                }
+                                DragTarget.TOP_RIGHT -> {
+                                    val nR = (current.right + dx).coerceIn(current.left + minSpan, 0.99f)
+                                    val nT = (current.top + dy).coerceIn(0.01f, current.bottom - minSpan)
+                                    current.copy(right = nR, top = nT)
+                                }
+                                DragTarget.BOTTOM_LEFT -> {
+                                    val nL = (current.left + dx).coerceIn(0.01f, current.right - minSpan)
+                                    val nB = (current.bottom + dy).coerceIn(current.top + minSpan, 0.99f)
+                                    current.copy(left = nL, bottom = nB)
+                                }
+                                DragTarget.BOTTOM_RIGHT -> {
+                                    val nR = (current.right + dx).coerceIn(current.left + minSpan, 0.99f)
+                                    val nB = (current.bottom + dy).coerceIn(current.top + minSpan, 0.99f)
+                                    current.copy(right = nR, bottom = nB)
+                                }
+                                DragTarget.TOP -> {
+                                    val nT = (current.top + dy).coerceIn(0.01f, current.bottom - minSpan)
+                                    current.copy(top = nT)
+                                }
+                                DragTarget.BOTTOM -> {
+                                    val nB = (current.bottom + dy).coerceIn(current.top + minSpan, 0.99f)
+                                    current.copy(bottom = nB)
+                                }
+                                DragTarget.LEFT -> {
+                                    val nL = (current.left + dx).coerceIn(0.01f, current.right - minSpan)
+                                    current.copy(left = nL)
+                                }
+                                DragTarget.RIGHT -> {
+                                    val nR = (current.right + dx).coerceIn(current.left + minSpan, 0.99f)
+                                    current.copy(right = nR)
+                                }
+                                DragTarget.CENTER -> {
+                                    val w = current.width
+                                    val h = current.height
+                                    val nL = (current.left + dx).coerceIn(0.01f, 0.99f - w)
+                                    val nT = (current.top + dy).coerceIn(0.01f, 0.99f - h)
+                                    NormalizedCropRect(nL, nT, nL + w, nT + h)
+                                }
+                                DragTarget.NONE -> current
                             }
-                            DragTarget.TOP_RIGHT -> {
-                                val nR = (activeCrop.right + dx).coerceIn(activeCrop.left + minSpan, 0.99f)
-                                val nT = (activeCrop.top + dy).coerceIn(0.01f, activeCrop.bottom - minSpan)
-                                activeCrop.copy(right = nR, top = nT)
-                            }
-                            DragTarget.BOTTOM_LEFT -> {
-                                val nL = (activeCrop.left + dx).coerceIn(0.01f, activeCrop.right - minSpan)
-                                val nB = (activeCrop.bottom + dy).coerceIn(activeCrop.top + minSpan, 0.99f)
-                                activeCrop.copy(left = nL, bottom = nB)
-                            }
-                            DragTarget.BOTTOM_RIGHT -> {
-                                val nR = (activeCrop.right + dx).coerceIn(activeCrop.left + minSpan, 0.99f)
-                                val nB = (activeCrop.bottom + dy).coerceIn(activeCrop.top + minSpan, 0.99f)
-                                activeCrop.copy(right = nR, bottom = nB)
-                            }
-                            DragTarget.TOP -> {
-                                val nT = (activeCrop.top + dy).coerceIn(0.01f, activeCrop.bottom - minSpan)
-                                activeCrop.copy(top = nT)
-                            }
-                            DragTarget.BOTTOM -> {
-                                val nB = (activeCrop.bottom + dy).coerceIn(activeCrop.top + minSpan, 0.99f)
-                                activeCrop.copy(bottom = nB)
-                            }
-                            DragTarget.LEFT -> {
-                                val nL = (activeCrop.left + dx).coerceIn(0.01f, activeCrop.right - minSpan)
-                                activeCrop.copy(left = nL)
-                            }
-                            DragTarget.RIGHT -> {
-                                val nR = (activeCrop.right + dx).coerceIn(activeCrop.left + minSpan, 0.99f)
-                                activeCrop.copy(right = nR)
-                            }
-                            DragTarget.CENTER -> {
-                                val w = activeCrop.width
-                                val h = activeCrop.height
-                                val nL = (activeCrop.left + dx).coerceIn(0.01f, 0.99f - w)
-                                val nT = (activeCrop.top + dy).coerceIn(0.01f, 0.99f - h)
-                                NormalizedCropRect(nL, nT, nL + w, nT + h)
-                            }
-                            DragTarget.NONE -> activeCrop
+                            activeCrop = current
                         }
-                    },
-                    onDragEnd = {
-                        currentDragTarget = DragTarget.NONE
-                        onCropChanged(activeCrop)
-                        onCropCommitted()
-                    },
-                    onDragCancel = {
-                        currentDragTarget = DragTarget.NONE
-                    },
-                )
+                    }
+
+                    onCropChanged(current)
+                    onCropCommitted(current)
+                }
             }
         } else {
             Modifier
@@ -315,10 +330,11 @@ fun ScannerOverlay(
                 )
             } else {
                 // 3. Cadre de recadrage interactif (en mode figé)
-                val bL = left + spanW * activeCrop.left
-                val bT = top + spanH * activeCrop.top
-                val bR = left + spanW * activeCrop.right
-                val bB = top + spanH * activeCrop.bottom
+                val crop = activeCrop
+                val bL = left + spanW * crop.left
+                val bT = top + spanH * crop.top
+                val bR = left + spanW * crop.right
+                val bB = top + spanH * crop.bottom
 
                 val scrimColor = Color.Black.copy(alpha = 0.42f)
 

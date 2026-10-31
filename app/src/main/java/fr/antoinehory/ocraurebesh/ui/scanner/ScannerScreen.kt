@@ -170,34 +170,69 @@ fun ScannerScreen(
     var overlaySize by remember { mutableStateOf(Size.Zero) }
     var rootSize by remember { mutableStateOf(Size.Zero) }
 
-    val onCropCommitted = remember(uiState.frozenFrameBitmap, uiState.cropRect, overlayPositionInRoot, overlaySize, rootSize, density) {
-        {
+    // Conversion NormalizedCropRect (relatif à l'overlay) → android.graphics.Rect (en pixels bitmap).
+    //
+    // Système de coordonnées :
+    // - [overlayPositionInRoot] : position de l'overlay en pixels Compose dans la fenêtre (positionInWindow).
+    // - [overlaySize]           : dimensions de l'overlay en pixels Compose.
+    // - Le bitmap [frozenFrameBitmap] est capturé par previewView.bitmap qui renvoie un screenshot
+    //   à la résolution du PreviewView (plein écran, même origine que la fenêtre Android).
+    //   On applique donc un facteur d'échelle bitmap.w / rootSize.w pour passer des coordonnées
+    //   Compose (pixels logiques) aux pixels bitmap.
+    val onCropCommitted: (NormalizedCropRect) -> Unit = remember(
+        uiState.frozenFrameBitmap, overlayPositionInRoot, overlaySize, rootSize, density
+    ) {
+        { committedCrop ->
             val bitmap = uiState.frozenFrameBitmap
-            if (bitmap != null && !bitmap.isRecycled && overlaySize.width > 0f && overlaySize.height > 0f && rootSize.width > 0f && rootSize.height > 0f) {
-                val crop = uiState.cropRect
+            if (
+                bitmap != null && !bitmap.isRecycled &&
+                overlaySize.width > 0f && overlaySize.height > 0f &&
+                rootSize.width > 0f && rootSize.height > 0f
+            ) {
+                // Calcul dans l'espace de l'overlay (pixels Compose)
                 val insetPx = 4f * density
                 val spanW = (overlaySize.width - insetPx * 2f).coerceAtLeast(1f)
                 val spanH = (overlaySize.height - insetPx * 2f).coerceAtLeast(1f)
 
-                val boxLeftInOverlay = insetPx + spanW * crop.left
-                val boxTopInOverlay = insetPx + spanH * crop.top
-                val boxWidthInOverlay = spanW * crop.width
-                val boxHeightInOverlay = spanH * crop.height
+                val boxLeftInOverlay  = insetPx + spanW * committedCrop.left
+                val boxTopInOverlay   = insetPx + spanH * committedCrop.top
+                val boxWidthInOverlay  = spanW * committedCrop.width
+                val boxHeightInOverlay = spanH * committedCrop.height
 
-                val boxLeftInRoot = overlayPositionInRoot.x + boxLeftInOverlay
-                val boxTopInRoot = overlayPositionInRoot.y + boxTopInOverlay
+                // Position absolue dans la fenêtre (pixels Compose)
+                // overlayPositionInRoot est maintenant positionInWindow() donc en coordonnées fenêtre
+                val boxLeftInWindow = overlayPositionInRoot.x + boxLeftInOverlay
+                val boxTopInWindow  = overlayPositionInRoot.y + boxTopInOverlay
 
+                // Le bitmap a la même résolution que le PreviewView (= plein écran).
+                // rootSize = BoxWithConstraints plein écran ≈ taille bitmap (mêmes pixels).
                 val scaleX = bitmap.width.toFloat() / rootSize.width
                 val scaleY = bitmap.height.toFloat() / rootSize.height
 
-                val bmpX = (boxLeftInRoot * scaleX).roundToInt().coerceIn(0, bitmap.width - 1)
-                val bmpY = (boxTopInRoot * scaleY).roundToInt().coerceIn(0, bitmap.height - 1)
-                val bmpW = (boxWidthInOverlay * scaleX).roundToInt().coerceIn(1, bitmap.width - bmpX)
+                val bmpX = (boxLeftInWindow * scaleX).roundToInt().coerceIn(0, bitmap.width - 1)
+                val bmpY = (boxTopInWindow  * scaleY).roundToInt().coerceIn(0, bitmap.height - 1)
+                val bmpW = (boxWidthInOverlay  * scaleX).roundToInt().coerceIn(1, bitmap.width  - bmpX)
                 val bmpH = (boxHeightInOverlay * scaleY).roundToInt().coerceIn(1, bitmap.height - bmpY)
 
-                onEvent(ScannerUiEvent.AnalyzeCrop(android.graphics.Rect(bmpX, bmpY, bmpX + bmpW, bmpY + bmpH)))
+                onEvent(
+                    ScannerUiEvent.AnalyzeCrop(
+                        android.graphics.Rect(bmpX, bmpY, bmpX + bmpW, bmpY + bmpH)
+                    )
+                )
             }
         }
+    }
+
+    val rootTapModifier = if (!uiState.isPaused) {
+        Modifier.pointerInput(Unit) {
+            detectTapGestures(
+                onTap = {
+                    onEvent(ScannerUiEvent.TogglePause)
+                }
+            )
+        }
+    } else {
+        Modifier
     }
 
     Scaffold(
@@ -211,15 +246,7 @@ fun ScannerScreen(
                 .onGloballyPositioned { coords ->
                     rootSize = Size(coords.size.width.toFloat(), coords.size.height.toFloat())
                 }
-                .pointerInput(uiState.isPaused) {
-                    detectTapGestures(
-                        onTap = {
-                            if (!uiState.isPaused) {
-                                onEvent(ScannerUiEvent.TogglePause)
-                            }
-                        }
-                    )
-                }
+                .then(rootTapModifier)
         ) {
             val isLandscape = maxWidth > maxHeight
 
@@ -313,7 +340,7 @@ private fun ScannerPortraitLayout(
     onCopyText: (String) -> Unit,
     onOpenGenerator: () -> Unit,
     onOpenInfo: () -> Unit,
-    onCropCommitted: () -> Unit,
+    onCropCommitted: (NormalizedCropRect) -> Unit,
     onOverlayPositioned: (Offset, Size) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -348,7 +375,7 @@ private fun ScannerPortraitLayout(
             hasRecognizedText = uiState.recognizedText.isNotEmpty(),
             isAnalyzingCrop = uiState.isAnalyzingCrop,
             onResumeScan = { onEvent(ScannerUiEvent.ResumeScanning) },
-            onAnalyzeCrop = onCropCommitted,
+            onAnalyzeCrop = { onCropCommitted(uiState.cropRect) },
             onCopyScan = { onCopyText(uiState.recognizedText) },
             onSaveScan = { onEvent(ScannerUiEvent.SaveCurrentScan) },
             onClearScan = { onEvent(ScannerUiEvent.ClearCurrentScan) },
@@ -373,7 +400,7 @@ private fun ScannerLandscapeLayout(
     onCopyText: (String) -> Unit,
     onOpenGenerator: () -> Unit,
     onOpenInfo: () -> Unit,
-    onCropCommitted: () -> Unit,
+    onCropCommitted: (NormalizedCropRect) -> Unit,
     onOverlayPositioned: (Offset, Size) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -421,7 +448,7 @@ private fun ScannerLandscapeLayout(
                 hasRecognizedText = uiState.recognizedText.isNotEmpty(),
                 isAnalyzingCrop = uiState.isAnalyzingCrop,
                 onResumeScan = { onEvent(ScannerUiEvent.ResumeScanning) },
-                onAnalyzeCrop = onCropCommitted,
+                onAnalyzeCrop = { onCropCommitted(uiState.cropRect) },
                 onCopyScan = { onCopyText(uiState.recognizedText) },
                 onSaveScan = { onEvent(ScannerUiEvent.SaveCurrentScan) },
                 onClearScan = { onEvent(ScannerUiEvent.ClearCurrentScan) },

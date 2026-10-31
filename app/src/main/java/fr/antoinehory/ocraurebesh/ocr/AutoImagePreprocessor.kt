@@ -113,9 +113,11 @@ object AutoImagePreprocessor {
     private const val FULL_SCREEN_REFERENCE_HEIGHT_PX = 1080
     private const val MIN_TARGET_ROI_HEIGHT_PX = 180
     private const val PADDING_PX = 16
-    private const val MAX_LINE_CANDIDATES = 2
+    private const val MAX_LINE_CANDIDATES = 3
     // Écart minimal (2e - 98e percentile) du canal chaud/froid pour justifier son analyse
     private const val MIN_WARM_COOL_SPREAD = 20
+    // Écart minimal pour accepter un canal R, G ou B individuel
+    private const val MIN_SINGLE_CHANNEL_SPREAD = 40
 
     /**
      * Applique la rotation du capteur et découpe la région d'intérêt (ROI) de la frame
@@ -234,10 +236,13 @@ object AutoImagePreprocessor {
     }
 
     /**
-     * Recherche des lignes de texte sur 4 sources complémentaires :
-     * - luminance : texte sombre sur fond clair / texte clair sur fond sombre (néons, écrans) ;
-     * - canal chaud/froid `(R+G)/2 - B` : texte doré/jaune/orange sur fond bleu (et inversement),
-     *   indispensable lorsque texte et fond ont **la même luminosité** (ex. lettres dorées peintes sur bleu).
+     * Recherche des lignes de texte sur plusieurs sources complémentaires :
+     * - **Luminance** : texte sombre sur fond clair / texte clair sur fond sombre (y compris néons).
+     * - **Canal chaud/froid** `(R+G)/2 - B` : texte doré/jaune/orange sur fond bleu et inversement.
+     * - **Canaux R, G, B individuels** : texte néon coloré sur fond chromaturellement différent
+     *   (ex. bleu néon sur anthracite, rouge néon sur noir, vert sur magenta).
+     *   Chaque canal est traité si son écart percentile dépasse [MIN_SINGLE_CHANNEL_SPREAD].
+     * - **Canal B-R** `B - R` : texte bleu/cyan sur fond rouge/orange et inversement.
      *
      * Seules les [MAX_LINE_CANDIDATES] sources présentant le plus de glyphes alignés sont conservées.
      */
@@ -248,13 +253,23 @@ object AutoImagePreprocessor {
         lumaBuffers: PreprocessedPixelBuffers,
     ): List<LineRegionCandidate> {
         val sources = mutableListOf<Pair<BooleanArray, Boolean>>()
+
+        // Source 1 & 2 : luminance (sombre sur clair + clair sur sombre)
         if (lumaBuffers.darkMask.size == width * height) {
             sources.add(lumaBuffers.darkMask to false)
             sources.add(lumaBuffers.lightMask to true)
         }
+
+        // Source 3 & 4 : canal chaud/froid (doré sur bleu, bleu sur doré)
         computeWarmCoolMasks(argbPixels, width, height)?.let { warmCool ->
-            sources.add(warmCool.lightMask to true)  // Texte chaud (doré) sur fond froid (bleu)
-            sources.add(warmCool.darkMask to false)  // Texte froid (bleu) sur fond chaud
+            sources.add(warmCool.lightMask to true)
+            sources.add(warmCool.darkMask to false)
+        }
+
+        // Source 5 & 6 : canaux R, G, B individuels — couvre les néons à iso-luminance
+        computeSingleChannelMasks(argbPixels, width, height)?.let { single ->
+            sources.add(single.lightMask to true)
+            sources.add(single.darkMask to false)
         }
 
         return sources
@@ -263,6 +278,57 @@ object AutoImagePreprocessor {
             }
             .sortedByDescending { it.region.alignedGlyphCount }
             .take(MAX_LINE_CANDIDATES)
+    }
+
+    /**
+     * Sélectionne parmi les canaux R, G, B et l'opposition B-R celui qui offre le plus grand
+     * contraste (écart percentile 2 %-98 %) et génère les masques adaptatifs correspondants.
+     *
+     * Cible les textes néon (bleu, cyan, rouge, vert, jaune) sur fond sombre ou chromatiquement
+     * neutre dont la **luminance seule ne suffit pas** à discriminer texte et fond.
+     *
+     * Retourne `null` si aucun canal ne présente un écart supérieur à [MIN_SINGLE_CHANNEL_SPREAD].
+     */
+    internal fun computeSingleChannelMasks(argbPixels: IntArray, width: Int, height: Int): AdaptiveMasks? {
+        val totalPixels = width * height
+
+        // Évalue jusqu'à 4 canaux : R, G, B et B-R (bleu néon sur rouge/orange)
+        // On n'utilise pas `data class` pour éviter le warning Array-in-data-class
+        class ChannelScore(val raw: IntArray, val histogram: IntArray, val spread: Int)
+
+        fun evalChannel(extract: (Int) -> Int): ChannelScore {
+            val raw = IntArray(totalPixels)
+            val histogram = IntArray(256)
+            for (i in 0 until totalPixels) {
+                val v = extract(argbPixels[i]).coerceIn(0, 255)
+                raw[i] = v
+                histogram[v]++
+            }
+            val p2 = percentile(histogram, totalPixels, 0.02f)
+            val p98 = percentile(histogram, totalPixels, 0.98f)
+            return ChannelScore(raw, histogram, p98 - p2)
+        }
+
+        val candidates = listOf(
+            // Canal R : texte rouge/orange néon sur fond vert/bleu/sombre
+            evalChannel { pixel -> (pixel shr 16) and 0xFF },
+            // Canal G : texte vert néon sur fond rouge/bleu/sombre
+            evalChannel { pixel -> (pixel shr 8) and 0xFF },
+            // Canal B : texte bleu/cyan néon sur fond rouge/orange/sombre
+            evalChannel { pixel -> pixel and 0xFF },
+            // Opposition B-R : bleu vif sur rouge/anthracite chaud (complémentaire du canal chaud/froid)
+            evalChannel { pixel ->
+                val r = (pixel shr 16) and 0xFF
+                val b = pixel and 0xFF
+                ((b - r + 255) shr 1)
+            },
+        )
+
+        val best = candidates.maxByOrNull { it.spread } ?: return null
+        if (best.spread < MIN_SINGLE_CHANNEL_SPREAD) return null
+
+        val enhanced = enhanceChannel(best.raw, best.histogram, width, height)
+        return computeAdaptiveMasks(enhanced, width, height)
     }
 
     /**
@@ -291,6 +357,8 @@ object AutoImagePreprocessor {
         val enhanced = enhanceChannel(raw, histogram, width, height)
         return computeAdaptiveMasks(enhanced, width, height)
     }
+
+    // `percentile` est utilisé aussi par computeSingleChannelMasks — déjà déclaré plus bas.
 
     private fun percentile(histogram: IntArray, totalPixels: Int, fraction: Float): Int {
         val target = max(1, (totalPixels * fraction).roundToInt())
